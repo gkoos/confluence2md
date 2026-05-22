@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3](https://github.com/gkoos/confluence2md/compare/v0.1.2...v0.1.3) (2026-05-22)
+
+
+### Bug Fixes
+
+* **ci:** use golangci-lint v2 with golangci-lint-action v9 ([de904f7](https://github.com/gkoos/confluence2md/commit/de904f731f931d250ffdf1be408eb6ed13ecfe94))
+
 ## [0.1.2](https://github.com/gkoos/confluence2md/compare/v0.1.1...v0.1.2) (2026-05-22)
 
 
