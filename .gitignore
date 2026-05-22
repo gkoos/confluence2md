@@ -1,0 +1,20 @@
+# Binaries
+bin/
+
+# Config with real credentials
+config.yml
+config.yaml
+
+# Output directory
+output/
+
+# Go build cache
+*.exe
+*.test
+*.out
+
+# Module download cache
+vendor/
+
+# Editor settings
+.vscode/

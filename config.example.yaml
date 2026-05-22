@@ -1,0 +1,33 @@
+confluence:
+  # Your Atlassian account email
+  username: you@example.com
+  # Atlassian API token
+  # Generate one at: https://id.atlassian.com/manage-profile/security/api-tokens
+  token: ""
+
+crawl:
+  # One or more seed page URLs to start from
+  seeds:
+    - https://your-org.atlassian.net/wiki/spaces/SPACE/pages/123456/Page+Title
+  # Maximum link-follow depth from each seed (0 = seed pages only)
+  max_depth: 3
+  # Maximum concurrent API requests
+  concurrency: 5
+  # Requests per minute (Confluence Cloud limit is ~300/min per token)
+  rate_limit_rpm: 250
+
+output:
+  # Directory to write Markdown files, attachments, and metadata
+  dir: ./output
+
+attachments:
+  # Download attachments referenced by crawled pages
+  download: true
+  # Skip attachments larger than this size in MB (0 = no limit)
+  max_size_mb: 100
+
+retry:
+  # Maximum number of retries for transient API errors (429, 5xx)
+  max_attempts: 5
+  # Initial backoff in milliseconds (doubles with each retry + jitter)
+  initial_backoff_ms: 1000

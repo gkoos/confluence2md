@@ -1,0 +1,1 @@
+<h3>Implementation</h3><ul><li>Use <code>fileId</code> as idempotency key.</li><li>Catch <code>E11000</code> and return 200.</li></ul><ol><li>Create index</li><li>Deploy migration</li></ol>

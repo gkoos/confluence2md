@@ -1,0 +1,35 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+### Deprecated
+
+### Removed
+
+### Security
+
+## [0.1.0] - 2026-05-22
+
+### Added
+- Initial `confluence2md` CLI release.
+- Full crawl mode (seed + max-depth traversal) and incremental updates mode.
+- Shared traversal engine with selective page re-processing and clean-page reuse.
+- Confluence storage-format to Markdown conversion pipeline.
+- Two-pass local link rewrite and metadata graph persistence (`metadata.json`).
+- Attachment download/reference rewrite and comment fetch/append support.
+- Completed vs successful crawl checkpoints with updates summary metrics.
+- Operational/internal documentation and broad unit test coverage.
+
+[Unreleased]: https://github.com/gkoos/confluence2md/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/gkoos/confluence2md/releases/tag/v0.1.0

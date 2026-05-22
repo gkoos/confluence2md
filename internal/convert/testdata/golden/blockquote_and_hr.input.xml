@@ -1,0 +1,1 @@
+<h2>Decision</h2><blockquote><p>Use fileId as idempotency key.</p></blockquote><hr/><p>This applies to callback processing only.</p>
