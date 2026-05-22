@@ -60,6 +60,11 @@ Releases are automated via GitHub Actions:
 3. Merging the release PR creates a new tag and GitHub release.
 4. GoReleaser builds and uploads `confluence2md` binaries for supported platforms.
 
+Release asset format and naming:
+
+- Linux/macOS targets: `.tar.gz` archives containing `confluence2md`
+- Windows targets: `.zip` archives containing `confluence2md.exe`
+
 ## Sensitive data
 
 Never commit a `config.yaml` containing real credentials. The file is gitignored. Use `config.example.yaml` as a reference.
