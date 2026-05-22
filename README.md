@@ -32,6 +32,14 @@ What you get:
   - **full**: crawl all pages reachable from seeds up to max depth.
   - **updates**: run the same seed-based traversal as full mode, but selectively re-process dirty pages while reusing clean-page artifacts.
 
+## Download
+
+Pre-built binaries are available on the [Releases](https://github.com/gkoos/confluence2md/releases) page.
+
+1. Download the archive for your platform.
+2. Extract the binary (`confluence2md` or `confluence2md.exe`).
+3. Run it from the directory containing your `config.yaml`.
+
 ## How To Use
 
 ### Requirements
