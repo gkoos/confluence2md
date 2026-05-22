@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2](https://github.com/gkoos/confluence2md/compare/v0.1.1...v0.1.2) (2026-05-22)
+
+
+### Bug Fixes
+
+* trigger release 0.1.2 pipeline ([30da4e2](https://github.com/gkoos/confluence2md/commit/30da4e22904a98273f91346a993f3e3b11aa1435))
+* trigger release 0.1.2 pipeline ([dc4cc5e](https://github.com/gkoos/confluence2md/commit/dc4cc5e8e0f7204633cfb60fa2ade7cc4683384e))
+* trigger release 0.1.2 pipeline ([7d02795](https://github.com/gkoos/confluence2md/commit/7d0279590c981e6889ac43d7f56bd6aa1dda6676))
+
 ## [0.1.1](https://github.com/gkoos/confluence2md/compare/v0.1.0...v0.1.1) (2026-05-22)
 
 
