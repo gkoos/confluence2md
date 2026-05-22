@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1](https://github.com/gkoos/confluence2md/compare/v0.1.0...v0.1.1) (2026-05-22)
+
+
+### Bug Fixes
+
+* remove unnecessary nil checks and fix channel syntax (golangci-lint) ([d3c3138](https://github.com/gkoos/confluence2md/commit/d3c313891aca7a34600747b6e2a33e8244535e52))
+* satisfy lint errors and modernize workflow actions ([12f9789](https://github.com/gkoos/confluence2md/commit/12f978984e4c92033f1f542ae7869a1736bb78be))
+
 ## [Unreleased]
 
 ### Added
