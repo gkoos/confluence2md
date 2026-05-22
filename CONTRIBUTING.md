@@ -4,7 +4,7 @@ Thank you for considering contributing to confluence2md!
 
 ## Prerequisites
 
-- [Go 1.25+](https://go.dev/dl/)
+- [Go 1.24+](https://go.dev/dl/)
 - [Task](https://taskfile.dev/installation/) — cross-platform build runner
 
 ## Building
