@@ -189,6 +189,27 @@ task test         # runs all tests
 task lint         # runs golangci-lint
 ```
 
+### Release Artifacts
+
+GitHub Releases publish platform binaries as compressed archives:
+
+- Linux/macOS: `.tar.gz`
+- Windows: `.zip`
+
+Supported release targets:
+
+- `linux/amd64`
+- `linux/arm64`
+- `darwin/amd64`
+- `darwin/arm64`
+- `windows/amd64`
+- `windows/arm64`
+
+Executable name inside archives:
+
+- Linux/macOS: `confluence2md`
+- Windows: `confluence2md.exe`
+
 ### Internals Documentation
 
 The diagram below shows how the full crawl mode works at a high level. For more details on specific parts of the implementation, see the linked docs:
