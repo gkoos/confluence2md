@@ -12,8 +12,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 * remove unnecessary nil checks and fix channel syntax (golangci-lint) ([d3c3138](https://github.com/gkoos/confluence2md/commit/d3c313891aca7a34600747b6e2a33e8244535e52))
 * satisfy lint errors and modernize workflow actions ([12f9789](https://github.com/gkoos/confluence2md/commit/12f978984e4c92033f1f542ae7869a1736bb78be))
-* test release automation ([23aed88](https://github.com/gkoos/confluence2md/commit/23aed88977a9ded66a971d45702da37e704a9c43))
-* test release automation ([e1fd0e6](https://github.com/gkoos/confluence2md/commit/e1fd0e627acce9b81a4f84288cd7c2ae339ce40b))
 
 ## [Unreleased]
 
