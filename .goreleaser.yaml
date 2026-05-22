@@ -1,0 +1,35 @@
+version: 2
+
+project_name: confluence2md
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: confluence2md
+    main: ./cmd/crawler
+    binary: confluence2md
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true
