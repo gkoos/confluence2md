@@ -82,7 +82,7 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			body := readLimitedBody(resp.Body, 2048)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusNotFound {
 				return comments, nil
 			}
@@ -109,10 +109,10 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 		}
 
 		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("unmarshal v2 comments response: %w", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		for _, item := range payload.Results {
 			authorID := strings.TrimSpace(item.Version.AuthorID)
@@ -168,7 +168,9 @@ func (c *Client) getUserDisplayNames(ctx context.Context, authorIDs map[string]b
 	if err != nil {
 		return nil, fmt.Errorf("request users lookup: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody := readLimitedBody(resp.Body, 2048)

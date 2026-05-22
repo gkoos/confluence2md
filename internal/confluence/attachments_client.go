@@ -100,18 +100,21 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 	if err != nil {
 		return nil, fmt.Errorf("request attachment redirect URI: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	var downloadURL string
-	if resp.StatusCode == http.StatusMovedPermanently || resp.StatusCode == http.StatusFound || resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusTemporaryRedirect || resp.StatusCode == http.StatusPermanentRedirect {
+	switch resp.StatusCode {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
 		downloadURL = resolveNextEndpoint(c.baseURL, resp.Header.Get("Location"))
 		if strings.TrimSpace(downloadURL) == "" {
 			return nil, fmt.Errorf("attachment redirect missing Location header")
 		}
-	} else if resp.StatusCode == http.StatusOK {
+	case http.StatusOK:
 		const maxBytes = 100 * 1024 * 1024
 		return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
-	} else {
+	default:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return nil, fmt.Errorf("attachment redirect endpoint returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
@@ -125,7 +128,9 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 	if err != nil {
 		return nil, fmt.Errorf("download attachment file: %w", err)
 	}
-	defer fileResp.Body.Close()
+	defer func() {
+		_ = fileResp.Body.Close()
+	}()
 
 	if fileResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(fileResp.Body, 1024))
