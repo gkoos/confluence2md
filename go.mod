@@ -1,6 +1,6 @@
 module github.com/gkoos/confluence2md
 
-go 1.25.0
+go 1.24
 
 require (
 	github.com/ctreminiom/go-atlassian/v2 v2.12.0

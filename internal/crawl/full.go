@@ -101,7 +101,7 @@ func NewCrawlSession(client *confluence.Client, cfg *config.Config, seedSpaceKey
 		queue:       make(chan queueItem, 10000), // large buffer to avoid blocking enqueue
 		visited:     make(map[int64]bool),
 		results:     make(map[int64]*CrawledPage),
-		semaphore:   make(chan struct{}, 0),
+		semaphore:   make(chan struct{}),
 		rateLimitCh: make(chan struct{}, 1),
 	}
 

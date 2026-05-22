@@ -143,7 +143,7 @@ func extractIDFromPath(path string) int64 {
 	// Pattern 1: /spaces/{KEY}/pages/{ID}/ or /wiki/spaces/{KEY}/pages/{ID}/
 	// This catches both /spaces/SFD/pages/6511563548 and /wiki/spaces/SFD/pages/6511563548
 	spacesPageRegex := regexp.MustCompile(`/(?:wiki/)?spaces/[^/]+/pages/(\d+)`)
-	if match := spacesPageRegex.FindStringSubmatch(path); match != nil && len(match) > 1 {
+	if match := spacesPageRegex.FindStringSubmatch(path); len(match) > 1 {
 		if id, err := strconv.ParseInt(match[1], 10, 64); err == nil {
 			return id
 		}
@@ -152,7 +152,7 @@ func extractIDFromPath(path string) int64 {
 	// Pattern 2: /wiki/spaces/{NUMERIC_ID}/pages/{ID}/
 	// Catches /wiki/spaces/4930699280/pages/6511563548/
 	wikiSpacesPagesRegex := regexp.MustCompile(`/wiki/spaces/\d+/pages/(\d+)`)
-	if match := wikiSpacesPagesRegex.FindStringSubmatch(path); match != nil && len(match) > 1 {
+	if match := wikiSpacesPagesRegex.FindStringSubmatch(path); len(match) > 1 {
 		if id, err := strconv.ParseInt(match[1], 10, 64); err == nil {
 			return id
 		}
