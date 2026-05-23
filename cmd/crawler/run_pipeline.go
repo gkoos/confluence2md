@@ -334,6 +334,10 @@ func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error
 		return nil, fmt.Errorf("save metadata: %w", err)
 	}
 
+	if err := writeStartIndex(rc.cfg.Output.Dir, rc.writer); err != nil {
+		return nil, fmt.Errorf("write start index: %w", err)
+	}
+
 	return &runFinalizeResult{
 		rewriteStats:       rewriteStats,
 		reconcileStats:     reconcileStats,
