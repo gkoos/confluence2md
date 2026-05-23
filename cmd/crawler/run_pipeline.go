@@ -155,8 +155,9 @@ func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawle
 		logPageWithLevel("ERR", pageID, "reused page missing from previous metadata")
 		return fmt.Errorf("reused page missing from previous metadata")
 	}
+	materializedMarkdown := store.ComposeMarkdownWithFrontMatter(pageIDStr, previous, rc.writer.GetSeedPageIDs(), crawledPage.Markdown)
 
-	materialized, materializeErr := ensureLocalPageArtifact(rc.cfg.Output.Dir, previous, crawledPage.Markdown)
+	materialized, materializeErr := ensureLocalPageArtifact(rc.cfg.Output.Dir, previous, materializedMarkdown)
 	if materializeErr != nil {
 		logPageWithLevel("ERR", pageID, "reused page artifact check failed: %v", materializeErr)
 		return materializeErr

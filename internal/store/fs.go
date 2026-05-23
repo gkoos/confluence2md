@@ -181,9 +181,10 @@ func (w *Writer) WritePage(pageID, title, sourceURL, storageContent string) (str
 func (w *Writer) AddPage(pageID string, pageRecord PageRecord) error {
 	filename := generateFilename(pageRecord.Title, pageID)
 	filepath := filepath.Join(w.outputDir, filename)
+	rendered := ComposeMarkdownWithFrontMatter(pageID, pageRecord, w.metadata.SeedPageIDs, pageRecord.StorageFormat)
 
 	// Write markdown content to disk
-	if err := os.WriteFile(filepath, []byte(pageRecord.StorageFormat), 0644); err != nil {
+	if err := os.WriteFile(filepath, []byte(rendered), 0644); err != nil {
 		return fmt.Errorf("write page file %s: %w", filename, err)
 	}
 
