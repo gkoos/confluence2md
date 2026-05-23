@@ -98,6 +98,7 @@ func bootstrapRun(mode, cfgFile string) (*runContext, error) {
 	if err != nil {
 		return nil, fmt.Errorf("extract seed page IDs: %w", err)
 	}
+	rc.writer.SetSeedPageIDs(int64SliceToStringIDs(rc.seedPageIDs))
 
 	fmt.Printf("\nStarting BFS crawl: %d seed(s), max depth %d, concurrency %d, rate %d rpm\n",
 		len(rc.seedPageIDs), cfg.Crawl.MaxDepth, cfg.Crawl.Concurrency, cfg.Crawl.RateLimitRPM)

@@ -407,3 +407,58 @@ func TestNewWriter_LoadLegacyMetadataWithoutCompletedCheckpoint(t *testing.T) {
 		t.Fatalf("expected successful checkpoint to remain present for legacy metadata")
 	}
 }
+
+func TestSetSeedPageIDs_NormalizesAndPersists(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWriter(dir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+
+	w.SetSeedPageIDs([]string{" 123 ", "", "123", "456", " 456 ", "789"})
+
+	got := w.GetSeedPageIDs()
+	if len(got) != 3 {
+		t.Fatalf("expected 3 normalized seed IDs, got %d: %#v", len(got), got)
+	}
+	if got[0] != "123" || got[1] != "456" || got[2] != "789" {
+		t.Fatalf("unexpected normalized seed IDs: %#v", got)
+	}
+
+	if err := w.SaveMetadata(); err != nil {
+		t.Fatalf("SaveMetadata returned error: %v", err)
+	}
+
+	w2, err := NewWriter(dir)
+	if err != nil {
+		t.Fatalf("NewWriter reload returned error: %v", err)
+	}
+
+	reloaded := w2.GetSeedPageIDs()
+	if len(reloaded) != 3 {
+		t.Fatalf("expected 3 reloaded seed IDs, got %d: %#v", len(reloaded), reloaded)
+	}
+	if reloaded[0] != "123" || reloaded[1] != "456" || reloaded[2] != "789" {
+		t.Fatalf("unexpected reloaded seed IDs: %#v", reloaded)
+	}
+}
+
+func TestNewWriter_LoadMetadataRejectsEmptySeedPageID(t *testing.T) {
+	dir := t.TempDir()
+	invalidMeta := `{
+  "crawl_started_at": "2026-01-01T00:00:00Z",
+  "seed_page_ids": ["123", ""],
+  "pages": {}
+}`
+	if err := os.WriteFile(filepath.Join(dir, "metadata.json"), []byte(invalidMeta), 0644); err != nil {
+		t.Fatalf("write metadata.json: %v", err)
+	}
+
+	_, err := NewWriter(dir)
+	if err == nil {
+		t.Fatalf("expected NewWriter to fail for empty seed page id")
+	}
+	if !strings.Contains(err.Error(), "seed_page_ids[1] is empty") {
+		t.Fatalf("expected seed_page_ids validation error, got: %v", err)
+	}
+}
