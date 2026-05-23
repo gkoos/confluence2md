@@ -32,8 +32,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Added
+- Deterministic YAML front matter on exported Markdown pages with stable provenance fields (`page_id`, `source_url`, `canonical_url`, `space_key`, `crawled_at`) and `is_seed`.
+- Minimal `output/index.md` generation as a human start page with crawl checkpoint summary and seed page links.
+- Metadata root `seed_page_ids` persisted from configured seeds for explicit seed semantics.
 
 ### Changed
+- Reused-page artifact materialization now writes normalized pages with front matter.
+- Export browsing guidance now points to `output/index.md` as the primary entrypoint.
 
 ### Fixed
 

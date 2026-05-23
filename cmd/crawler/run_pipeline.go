@@ -98,6 +98,7 @@ func bootstrapRun(mode, cfgFile string) (*runContext, error) {
 	if err != nil {
 		return nil, fmt.Errorf("extract seed page IDs: %w", err)
 	}
+	rc.writer.SetSeedPageIDs(int64SliceToStringIDs(rc.seedPageIDs))
 
 	fmt.Printf("\nStarting BFS crawl: %d seed(s), max depth %d, concurrency %d, rate %d rpm\n",
 		len(rc.seedPageIDs), cfg.Crawl.MaxDepth, cfg.Crawl.Concurrency, cfg.Crawl.RateLimitRPM)
@@ -154,8 +155,9 @@ func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawle
 		logPageWithLevel("ERR", pageID, "reused page missing from previous metadata")
 		return fmt.Errorf("reused page missing from previous metadata")
 	}
+	materializedMarkdown := store.ComposeMarkdownWithFrontMatter(pageIDStr, previous, rc.writer.GetSeedPageIDs(), crawledPage.Markdown)
 
-	materialized, materializeErr := ensureLocalPageArtifact(rc.cfg.Output.Dir, previous, crawledPage.Markdown)
+	materialized, materializeErr := ensureLocalPageArtifact(rc.cfg.Output.Dir, previous, materializedMarkdown)
 	if materializeErr != nil {
 		logPageWithLevel("ERR", pageID, "reused page artifact check failed: %v", materializeErr)
 		return materializeErr
@@ -330,6 +332,10 @@ func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error
 
 	if err := rc.writer.SaveMetadata(); err != nil {
 		return nil, fmt.Errorf("save metadata: %w", err)
+	}
+
+	if err := writeStartIndex(rc.cfg.Output.Dir, rc.writer); err != nil {
+		return nil, fmt.Errorf("write start index: %w", err)
 	}
 
 	return &runFinalizeResult{

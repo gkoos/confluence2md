@@ -42,6 +42,7 @@ type Metadata struct {
 	LastSuccessfulCrawlStartedAt   time.Time             `json:"last_successful_crawl_started_at,omitempty"`
 	LastSuccessfulCrawlCompletedAt time.Time             `json:"last_successful_crawl_completed_at,omitempty"`
 	LastSuccessfulCrawlMode        string                `json:"last_successful_crawl_mode,omitempty"`
+	SeedPageIDs                    []string              `json:"seed_page_ids,omitempty"`
 	Pages                          map[string]PageRecord `json:"pages"`
 }
 
@@ -180,9 +181,10 @@ func (w *Writer) WritePage(pageID, title, sourceURL, storageContent string) (str
 func (w *Writer) AddPage(pageID string, pageRecord PageRecord) error {
 	filename := generateFilename(pageRecord.Title, pageID)
 	filepath := filepath.Join(w.outputDir, filename)
+	rendered := ComposeMarkdownWithFrontMatter(pageID, pageRecord, w.metadata.SeedPageIDs, pageRecord.StorageFormat)
 
 	// Write markdown content to disk
-	if err := os.WriteFile(filepath, []byte(pageRecord.StorageFormat), 0644); err != nil {
+	if err := os.WriteFile(filepath, []byte(rendered), 0644); err != nil {
 		return fmt.Errorf("write page file %s: %w", filename, err)
 	}
 
@@ -205,6 +207,18 @@ func (w *Writer) AddPageMetadata(pageID string, pageRecord PageRecord) {
 // GetPages returns the current pages map reference.
 func (w *Writer) GetPages() map[string]PageRecord {
 	return w.metadata.Pages
+}
+
+// SetSeedPageIDs records canonical seed page IDs at metadata root.
+func (w *Writer) SetSeedPageIDs(seedPageIDs []string) {
+	w.metadata.SeedPageIDs = normalizeSeedPageIDs(seedPageIDs)
+}
+
+// GetSeedPageIDs returns a copy of canonical seed page IDs from metadata root.
+func (w *Writer) GetSeedPageIDs() []string {
+	out := make([]string, len(w.metadata.SeedPageIDs))
+	copy(out, w.metadata.SeedPageIDs)
+	return out
 }
 
 // SaveMetadata writes the metadata.json file to disk.
@@ -260,6 +274,12 @@ func validateMetadata(m *Metadata) error {
 		return fmt.Errorf("pages map is missing")
 	}
 
+	for i, seedID := range m.SeedPageIDs {
+		if strings.TrimSpace(seedID) == "" {
+			return fmt.Errorf("seed_page_ids[%d] is empty", i)
+		}
+	}
+
 	for id, page := range m.Pages {
 		if id == "" {
 			return fmt.Errorf("found page with empty map key")
@@ -291,6 +311,29 @@ func validateMetadata(m *Metadata) error {
 	}
 
 	return nil
+}
+
+func normalizeSeedPageIDs(seedPageIDs []string) []string {
+	if len(seedPageIDs) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(seedPageIDs))
+	seen := make(map[string]bool, len(seedPageIDs))
+	for _, id := range seedPageIDs {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		normalized = append(normalized, id)
+	}
+
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	return normalized
 }
 
 func validateCheckpointWriteInput(mode string, startedAt, completedAt time.Time) error {

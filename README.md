@@ -1,5 +1,11 @@
 # `confluence2md` - Confluence to Markdown crawler and converter
 
+[![CI](https://github.com/gkoos/confluence2md/actions/workflows/ci.yml/badge.svg)](https://github.com/gkoos/confluence2md/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/gkoos/confluence2md)](https://github.com/gkoos/confluence2md/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/gkoos/confluence2md/blob/main/LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/gkoos/confluence2md)](https://github.com/gkoos/confluence2md/blob/main/go.mod)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gkoos/confluence2md)](https://goreportcard.com/report/github.com/gkoos/confluence2md)
+
 Turn your Confluence space into Markdown files on your hard drive and use that local copy to:
 
 - build a second brain
@@ -14,9 +20,11 @@ Turn your Confluence space into Markdown files on your hard drive and use that l
 
 What you get:
 - One local `.md` file per crawled page, with stable filenames that include page IDs.
+- Deterministic YAML front matter on each page with source/provenance fields and `is_seed`.
 - Links between crawled pages rewritten to relative local links.
 - External or out-of-scope links preserved as original URLs.
 - Page comments appended under a `## Comments` section.
+- A human-friendly `index.md` start page with crawl summary and seed links.
 - A `metadata.json` index with page metadata plus incoming/outgoing link graph data.
 
 ## What It Does
@@ -28,6 +36,7 @@ What you get:
 - Downloads page attachments and rewrites attachment references to point to the downloaded files.
 - Appends page comments under a `## Comments` section in each page file.
 - Writes a single `metadata.json` with crawl metadata and a bidirectional link graph.
+- Persists configured seed page IDs at metadata root (`seed_page_ids`) for stable seed semantics.
 - Supports two run modes:
   - **full**: crawl all pages reachable from seeds up to max depth.
   - **updates**: run the same seed-based traversal as full mode, but selectively re-process dirty pages while reusing clean-page artifacts.
@@ -102,7 +111,7 @@ confluence2md --mode full
 
 Note: full mode clears the configured output directory before crawling.
 
-Once it completes, open `output/` to inspect the generated Markdown files.
+Once it completes, start at `output/index.md` for crawl summary and seed entrypoints.
 
 ### CLI Usage
 
@@ -179,11 +188,34 @@ Because the rewrite pass only runs after crawling is complete, every decision is
 
 ```
 output/
+├── index.md                      # start-here page: crawl summary + seed links
 ├── metadata.json                  # all-pages index: metadata + link graph
-├── {title-slug}_{page-id}.md      # one file per page (comments appended at bottom)
+├── {title-slug}_{page-id}.md      # one file per page (front matter + page body + comments)
 └── attachments/
   └── {page-id}_{original-filename}
 ```
+
+### Markdown Front Matter
+
+Each exported page starts with deterministic YAML front matter:
+
+- Required fields:
+  - `page_id`
+  - `title`
+  - `source_url`
+  - `canonical_url`
+  - `space_key`
+  - `is_seed`
+  - `crawled_at`
+- Optional fields:
+  - `comment_count` (present only when greater than 0)
+  - `comments_fetch_error` (present only when non-empty)
+  - `attachments` (present only when non-empty)
+
+Seed semantics:
+
+- `is_seed` is derived from membership in metadata root `seed_page_ids`.
+- Traversal `depth` is still tracked in `metadata.json`, but not surfaced in front matter.
 
 ## Building, Testing, and Internals
 

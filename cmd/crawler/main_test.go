@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -354,5 +355,64 @@ func TestFinalizeRun_ZeroErrorsAdvanceCompletedAndSuccessful(t *testing.T) {
 	}
 	if successful.Mode != "full" {
 		t.Fatalf("expected successful checkpoint mode full, got %q", successful.Mode)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(outDir, "index.md")); statErr != nil {
+		t.Fatalf("expected index.md to be generated, stat err=%v", statErr)
+	}
+}
+
+func TestWriteStartIndex_IncludesSummaryAndSeedLinks(t *testing.T) {
+	outDir := t.TempDir()
+	w, err := store.NewWriter(outDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+
+	start := time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC)
+	end := start.Add(2 * time.Minute)
+	if err := w.MarkCompletedCheckpoint("updates", start, end); err != nil {
+		t.Fatalf("MarkCompletedCheckpoint returned error: %v", err)
+	}
+	if err := w.MarkSuccessfulCheckpoint("updates", start, end); err != nil {
+		t.Fatalf("MarkSuccessfulCheckpoint returned error: %v", err)
+	}
+
+	w.SetSeedPageIDs([]string{"100", "999"})
+	w.AddPageMetadata("100", store.PageRecord{
+		ID:           "100",
+		Title:        "Decision Records",
+		LocalPath:    "decision-records_100.md",
+		SourceURL:    "https://example/wiki/pages/viewpage.action?pageId=100",
+		CanonicalURL: "https://example/wiki/pages/viewpage.action?pageId=100",
+		SpaceKey:     "SFD",
+		CrawledAt:    start,
+	})
+
+	if err := writeStartIndex(outDir, w); err != nil {
+		t.Fatalf("writeStartIndex returned error: %v", err)
+	}
+
+	indexBytes, err := os.ReadFile(filepath.Join(outDir, "index.md"))
+	if err != nil {
+		t.Fatalf("read index.md: %v", err)
+	}
+	index := string(indexBytes)
+
+	wants := []string{
+		"# Start Here",
+		"## Crawl Summary",
+		"mode=updates, started=2026-05-23T12:00:00Z, completed=2026-05-23T12:02:00Z",
+		"## Seed Pages",
+		"- [Decision Records](decision-records_100.md) - source: <https://example/wiki/pages/viewpage.action?pageId=100>",
+		"- Page 999 (not present in current crawl output)",
+		"## Metadata",
+		"[metadata.json](metadata.json)",
+	}
+
+	for _, want := range wants {
+		if !strings.Contains(index, want) {
+			t.Fatalf("expected index to contain %q, got:\n%s", want, index)
+		}
 	}
 }
