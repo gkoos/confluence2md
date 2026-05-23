@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/gkoos/confluence2md/compare/v0.1.3...v0.2.0) (2026-05-23)
+
+
+### Features
+
+* add markdown front matter and start index output ([8d8b028](https://github.com/gkoos/confluence2md/commit/8d8b028a559434797e7d34b6b6fca5ed85a6e1db))
+* **export:** add deterministic markdown front matter ([325375c](https://github.com/gkoos/confluence2md/commit/325375cfd845090edd7e1f5901b9b84e70ebabaa))
+* **index:** generate minimal start index from metadata ([ef101b8](https://github.com/gkoos/confluence2md/commit/ef101b8066498f3d2e84863338988beaf3fc0315))
+* **metadata:** persist seed_page_ids at metadata root ([cdecb4e](https://github.com/gkoos/confluence2md/commit/cdecb4e037ff7c2703f810f822d85d887160f10f))
+
 ## [0.1.3](https://github.com/gkoos/confluence2md/compare/v0.1.2...v0.1.3) (2026-05-22)
 
 
