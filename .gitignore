@@ -4,6 +4,7 @@ bin/
 # Config with real credentials
 config.yml
 config.yaml
+!.github/ISSUE_TEMPLATE/config.yml
 
 # Output directory
 output/
