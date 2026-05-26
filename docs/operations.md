@@ -59,6 +59,12 @@ Checks and actions:
 3. Re-run full mode to rebuild a complete local mirror.
 4. Inspect summary counters (pages with errors, rewritten links, comment warnings).
 
+Queue saturation behavior:
+
+- The crawl queue is bounded by `crawl.queue_size`.
+- If discovered pages exceed queue capacity during traversal, the run fails loudly after traversal with a saturation error and sampled dropped page IDs/depths.
+- Increase `crawl.queue_size` for high-fanout spaces if this occurs.
+
 ### Link rewrite surprises
 
 Expected behavior:
@@ -84,6 +90,7 @@ If links are not rewritten as expected:
 
 - `crawl.concurrency` must be greater than `0`.
 - `crawl.rate_limit_rpm` must be greater than `0`.
+- `crawl.queue_size` must be greater than `0`.
 - Invalid values are rejected at config validation time so runs fail fast before crawl startup.
 
 ## Updates-mode artifact self-healing

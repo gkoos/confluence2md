@@ -41,6 +41,13 @@ type CrawledPage struct {
 	AttachmentFetchError string
 }
 
+type queueDropSample struct {
+	PageID int64
+	Depth  int
+}
+
+const maxQueueDropSamples = 20
+
 // NodeHandlerResult is the mode-specific output produced per traversed node.
 // The traversal engine only depends on OutgoingLinks and FetchError.
 type NodeHandlerResult struct {
@@ -77,7 +84,9 @@ type CrawlSession struct {
 	pendingWork  sync.WaitGroup
 
 	// Tracking
-	totalFetched int
+	totalFetched       int
+	enqueueDrops      int
+	enqueueDropSample []queueDropSample
 }
 
 type queueItem struct {
@@ -94,7 +103,7 @@ func NewCrawlSession(client *confluence.Client, cfg *config.Config, seedSpaceKey
 		concurrency:  cfg.Crawl.Concurrency,
 		seedSpaceKey: seedSpaceKey,
 
-		queue:       make(chan queueItem, 10000), // large buffer to avoid blocking enqueue
+		queue:       make(chan queueItem, cfg.Crawl.QueueSize),
 		visited:     make(map[int64]bool),
 		results:     make(map[int64]*CrawledPage),
 		semaphore:   make(chan struct{}),
@@ -151,7 +160,23 @@ func (cs *CrawlSession) Run(ctx context.Context, seedPageIDs []int64) (map[int64
 	close(cs.queue)
 	workerWg.Wait()
 
+	if cs.enqueueDrops > 0 {
+		return cs.results, fmt.Errorf("crawl queue saturated: dropped %d discovered page(s); sample=%s", cs.enqueueDrops, cs.queueDropSampleSummary())
+	}
+
 	return cs.results, nil
+}
+
+func (cs *CrawlSession) queueDropSampleSummary() string {
+	if len(cs.enqueueDropSample) == 0 {
+		return "none"
+	}
+
+	parts := make([]string, 0, len(cs.enqueueDropSample))
+	for _, sample := range cs.enqueueDropSample {
+		parts = append(parts, fmt.Sprintf("%d@d%d", sample.PageID, sample.Depth))
+	}
+	return strings.Join(parts, ",")
 }
 
 // worker processes items from the queue
@@ -447,7 +472,14 @@ func (cs *CrawlSession) enqueueChildren(parentDepth int, childPageIDs []int64) {
 			select {
 			case cs.queue <- queueItem{pageID: childID, depth: childDepth}:
 			default:
-				// queue full, skip (should rarely happen with buffered queue)
+				// Queue is saturated: track and fail loud later instead of silently losing pages.
+				cs.enqueueDrops++
+				if len(cs.enqueueDropSample) < maxQueueDropSamples {
+					cs.enqueueDropSample = append(cs.enqueueDropSample, queueDropSample{
+						PageID: childID,
+						Depth:  childDepth,
+					})
+				}
 				cs.pendingWork.Done()
 			}
 		}
@@ -484,6 +516,8 @@ func (cs *CrawlSession) Stats() map[string]interface{} {
 		"total_links":              linkCount,
 		"unique_internal_targets":  len(uniqueInternalTargets),
 		"external_links_skipped":   externalSkipped,
+		"queue_drops":              cs.enqueueDrops,
+		"queue_drop_sample_count":  len(cs.enqueueDropSample),
 		"depth_distribution":       depthDist,
 	}
 }

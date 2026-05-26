@@ -84,6 +84,8 @@ crawl:
   # Target HTTP requests per minute across all Confluence API calls
   # (transport-level limiter; Confluence Cloud is ~300/min per token)
   rate_limit_rpm: 250
+  # Maximum buffered discovered pages waiting to be processed
+  queue_size: 10000
 
 output:
   # Directory to write Markdown files, attachments, and metadata
