@@ -61,25 +61,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 * remove unnecessary nil checks and fix channel syntax (golangci-lint) ([d3c3138](https://github.com/gkoos/confluence2md/commit/d3c313891aca7a34600747b6e2a33e8244535e52))
 * satisfy lint errors and modernize workflow actions ([12f9789](https://github.com/gkoos/confluence2md/commit/12f978984e4c92033f1f542ae7869a1736bb78be))
 
-## [Unreleased]
-
-### Added
-- Deterministic YAML front matter on exported Markdown pages with stable provenance fields (`page_id`, `source_url`, `canonical_url`, `space_key`, `crawled_at`) and `is_seed`.
-- Minimal `output/index.md` generation as a human start page with crawl checkpoint summary and seed page links.
-- Metadata root `seed_page_ids` persisted from configured seeds for explicit seed semantics.
-
-### Changed
-- Reused-page artifact materialization now writes normalized pages with front matter.
-- Export browsing guidance now points to `output/index.md` as the primary entrypoint.
-
-### Fixed
-
-### Deprecated
-
-### Removed
-
-### Security
-
 ## [0.1.0] - 2026-05-22
 
 ### Added
@@ -92,5 +73,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Completed vs successful crawl checkpoints with updates summary metrics.
 - Operational/internal documentation and broad unit test coverage.
 
-[Unreleased]: https://github.com/gkoos/confluence2md/compare/v0.1.0...HEAD
+[0.4.0]: https://github.com/gkoos/confluence2md/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/gkoos/confluence2md/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/gkoos/confluence2md/compare/v0.1.3...v0.2.0
+[0.1.3]: https://github.com/gkoos/confluence2md/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/gkoos/confluence2md/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/gkoos/confluence2md/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gkoos/confluence2md/releases/tag/v0.1.0
