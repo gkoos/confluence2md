@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/gkoos/confluence2md/compare/v0.3.0...v0.4.0) (2026-05-26)
+
+
+### Features
+
+* **crawl:** add configurable queue size and fail-fast saturation handling ([5e2f757](https://github.com/gkoos/confluence2md/commit/5e2f7572adfe0bf5b3afdeea97d3ed60d9ffd42d))
+* **crawl:** add configurable queue size and fail-fast saturation handling ([eeae036](https://github.com/gkoos/confluence2md/commit/eeae03671c246823d39ef3d91183336bd8578efa))
+
 ## [0.3.0](https://github.com/gkoos/confluence2md/compare/v0.2.0...v0.3.0) (2026-05-26)
 
 
