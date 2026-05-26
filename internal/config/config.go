@@ -27,6 +27,7 @@ type CrawlConfig struct {
 	MaxDepth     int      `mapstructure:"max_depth"`
 	Concurrency  int      `mapstructure:"concurrency"`
 	RateLimitRPM int      `mapstructure:"rate_limit_rpm"`
+	QueueSize    int      `mapstructure:"queue_size"`
 }
 
 type OutputConfig struct {
@@ -93,6 +94,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Crawl.RateLimitRPM <= 0 {
 		errs = append(errs, "crawl.rate_limit_rpm must be > 0")
+	}
+	if c.Crawl.QueueSize <= 0 {
+		errs = append(errs, "crawl.queue_size must be > 0")
 	}
 	if c.Output.Dir == "" {
 		errs = append(errs, "output.dir is required")

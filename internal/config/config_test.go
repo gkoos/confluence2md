@@ -16,6 +16,7 @@ func TestValidate_RejectsNonPositiveConcurrencyAndRateLimit(t *testing.T) {
 			MaxDepth:     1,
 			Concurrency:  0,
 			RateLimitRPM: 0,
+			QueueSize:    0,
 		},
 		Output: OutputConfig{Dir: "./output"},
 		Retry: RetryConfig{
@@ -34,6 +35,9 @@ func TestValidate_RejectsNonPositiveConcurrencyAndRateLimit(t *testing.T) {
 	}
 	if !strings.Contains(msg, "crawl.rate_limit_rpm must be > 0") {
 		t.Fatalf("expected rate_limit_rpm validation error, got: %s", msg)
+	}
+	if !strings.Contains(msg, "crawl.queue_size must be > 0") {
+		t.Fatalf("expected queue_size validation error, got: %s", msg)
 	}
 	if !strings.Contains(msg, "retry.max_attempts must be >= 1") {
 		t.Fatalf("expected retry.max_attempts validation error, got: %s", msg)
@@ -54,6 +58,7 @@ func TestValidate_AcceptsPositiveConcurrencyAndRateLimit(t *testing.T) {
 			MaxDepth:     1,
 			Concurrency:  2,
 			RateLimitRPM: 250,
+			QueueSize:    10000,
 		},
 		Output: OutputConfig{Dir: "./output"},
 		Retry: RetryConfig{

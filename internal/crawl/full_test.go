@@ -2,6 +2,7 @@ package crawl
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 )
 
 func TestSetNodeHandlerRejectsNil(t *testing.T) {
-	cfg := &config.Config{Crawl: config.CrawlConfig{MaxDepth: 1, Concurrency: 1, RateLimitRPM: 60000}}
+	cfg := &config.Config{Crawl: config.CrawlConfig{MaxDepth: 1, Concurrency: 1, RateLimitRPM: 60000, QueueSize: 10000}}
 	cs := NewCrawlSession(nil, cfg, "")
 
 	if err := cs.SetNodeHandler(nil); err == nil {
@@ -25,6 +26,7 @@ func TestRunUsesSharedTraversalWithCustomNodeHandler(t *testing.T) {
 			MaxDepth:     2,
 			Concurrency:  1,
 			RateLimitRPM: 60000,
+			QueueSize:    10000,
 		},
 	}
 	cs := NewCrawlSession(nil, cfg, "")
@@ -77,6 +79,7 @@ func TestTraversalUsesMinimalDepthAcrossBranches(t *testing.T) {
 			MaxDepth:     4,
 			Concurrency:  1,
 			RateLimitRPM: 60000,
+			QueueSize:    10000,
 		},
 	}
 	cs := NewCrawlSession(nil, cfg, "")
@@ -160,5 +163,72 @@ func TestParseOutgoingLinkIDs(t *testing.T) {
 	}
 	if ids[0] != 123 || ids[1] != 456 {
 		t.Fatalf("unexpected parsed IDs: %#v", ids)
+	}
+}
+
+func TestRun_FailsLoudlyWhenQueueSaturates(t *testing.T) {
+	cfg := &config.Config{
+		Crawl: config.CrawlConfig{
+			MaxDepth:     1,
+			Concurrency:  1,
+			RateLimitRPM: 60000,
+			QueueSize:    1,
+		},
+	}
+	cs := NewCrawlSession(nil, cfg, "")
+
+	graph := map[int64][]int64{
+		1: {2, 3, 4, 5}, // queue can only hold one child while worker is enqueuing
+		2: {}, 3: {}, 4: {}, 5: {},
+	}
+
+	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
+		return &NodeHandlerResult{Title: "test", OutgoingLinks: graph[pageID]}
+	})
+	if err != nil {
+		t.Fatalf("SetNodeHandler returned error: %v", err)
+	}
+
+	_, runErr := cs.Run(context.Background(), []int64{1})
+	if runErr == nil {
+		t.Fatal("expected queue saturation error, got nil")
+	}
+	if !strings.Contains(runErr.Error(), "crawl queue saturated") {
+		t.Fatalf("expected queue saturation error message, got: %v", runErr)
+	}
+	if cs.enqueueDrops == 0 {
+		t.Fatal("expected enqueueDrops > 0 on saturation")
+	}
+}
+
+func TestRun_DoesNotFailWhenQueueHasCapacity(t *testing.T) {
+	cfg := &config.Config{
+		Crawl: config.CrawlConfig{
+			MaxDepth:     1,
+			Concurrency:  1,
+			RateLimitRPM: 60000,
+			QueueSize:    16,
+		},
+	}
+	cs := NewCrawlSession(nil, cfg, "")
+
+	graph := map[int64][]int64{
+		1: {2, 3, 4, 5},
+		2: {}, 3: {}, 4: {}, 5: {},
+	}
+
+	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
+		return &NodeHandlerResult{Title: "test", OutgoingLinks: graph[pageID]}
+	})
+	if err != nil {
+		t.Fatalf("SetNodeHandler returned error: %v", err)
+	}
+
+	_, runErr := cs.Run(context.Background(), []int64{1})
+	if runErr != nil {
+		t.Fatalf("expected no queue saturation error, got: %v", runErr)
+	}
+	if cs.enqueueDrops != 0 {
+		t.Fatalf("expected zero enqueue drops, got %d", cs.enqueueDrops)
 	}
 }
