@@ -23,7 +23,7 @@ func TestRateLimitTransport_AllowsImmediateRequestWhenBudgetAvailable(t *testing
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("ok"))}, nil
 	})
 
-	transport := newRateLimitTransport(base, 60)
+	transport := newRateLimitTransport(base, 60, 1, "example.com")
 
 	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 	if err != nil {
@@ -53,7 +53,7 @@ func TestRateLimitTransport_WaitsWhenTokenUnavailable(t *testing.T) {
 	})
 
 	// 1200 RPM = 20 req/s => ~50ms between tokens with burst=1.
-	transport := newRateLimitTransport(base, 1200)
+	transport := newRateLimitTransport(base, 1200, 1, "example.com")
 
 	req1, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 	if err != nil {
@@ -87,7 +87,7 @@ func TestRateLimitTransport_RespectsContextCancellationWhileWaiting(t *testing.T
 	})
 
 	// 60 RPM = 1 req/s. First request consumes immediate burst token.
-	transport := newRateLimitTransport(base, 60)
+	transport := newRateLimitTransport(base, 60, 1, "example.com")
 
 	req1, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 	if err != nil {
@@ -113,5 +113,40 @@ func TestRateLimitTransport_RespectsContextCancellationWhileWaiting(t *testing.T
 	}
 	if called != 1 {
 		t.Fatalf("expected base transport not to be called for canceled request, got %d calls", called)
+	}
+}
+
+func TestRateLimitTransport_SkipsLimitingForOtherHosts(t *testing.T) {
+	called := 0
+	base := rateLimitRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		called++
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("ok"))}, nil
+	})
+
+	transport := newRateLimitTransport(base, 60, 1, "atlassian.net")
+
+	req1, err := http.NewRequest(http.MethodGet, "https://cdn.example.com/file1", nil)
+	if err != nil {
+		t.Fatalf("new first request: %v", err)
+	}
+	req2, err := http.NewRequest(http.MethodGet, "https://cdn.example.com/file2", nil)
+	if err != nil {
+		t.Fatalf("new second request: %v", err)
+	}
+
+	start := time.Now()
+	if _, err := transport.RoundTrip(req1); err != nil {
+		t.Fatalf("first round trip: %v", err)
+	}
+	if _, err := transport.RoundTrip(req2); err != nil {
+		t.Fatalf("second round trip: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	if called != 2 {
+		t.Fatalf("expected base transport to be called twice, got %d", called)
+	}
+	if elapsed > 100*time.Millisecond {
+		t.Fatalf("expected non-limited hosts to pass through quickly, elapsed %s", elapsed)
 	}
 }
