@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gkoos/confluence2md/internal/config"
 )
 
 func TestFetchV2CommentsFromEndpoint_Paginates(t *testing.T) {
@@ -40,7 +42,7 @@ func TestFetchV2CommentsFromEndpoint_Paginates(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t")
+	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1})
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -120,7 +122,7 @@ func TestGetPageCommentsV2_FetchesChildrenAndDisplayNames(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t")
+	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1})
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}

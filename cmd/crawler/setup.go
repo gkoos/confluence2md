@@ -50,7 +50,7 @@ func clearDirectoryContents(dir string) error {
 }
 
 func newConfluenceClient(cfg *config.Config) (*confluenceclient.Client, error) {
-	client, err := confluenceclient.NewClient(cfg.BaseURL(), cfg.Confluence.Username, cfg.Confluence.Token)
+	client, err := confluenceclient.NewClient(cfg.BaseURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry)
 	if err != nil {
 		return nil, fmt.Errorf("creating Confluence client: %w", err)
 	}

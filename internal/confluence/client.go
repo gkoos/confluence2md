@@ -12,6 +12,7 @@ import (
 	"time"
 
 	atlassian "github.com/ctreminiom/go-atlassian/v2/confluence/v2"
+	"github.com/gkoos/confluence2md/internal/config"
 )
 
 // Client wraps the Confluence API client used by the crawler.
@@ -24,11 +25,15 @@ type Client struct {
 }
 
 // NewClient creates an authenticated Confluence Cloud client.
-func NewClient(baseURL, username, token string) (*Client, error) {
+func NewClient(baseURL, username, token string, retry config.RetryConfig) (*Client, error) {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	baseURL = strings.TrimSuffix(baseURL, "/wiki")
 
-	httpClient := &http.Client{Timeout: 20 * time.Second}
+	transport := newRetryTransport(http.DefaultTransport, retry.MaxAttempts, retry.InitialBackoffMS)
+	httpClient := &http.Client{
+		Timeout:   20 * time.Second,
+		Transport: transport,
+	}
 
 	api, err := atlassian.New(httpClient, baseURL)
 	if err != nil {
