@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/gkoos/confluence2md/compare/v0.2.0...v0.3.0) (2026-05-26)
+
+
+### Features
+
+* **http:** add transport-level retry and request-level rate limiting ([389e351](https://github.com/gkoos/confluence2md/commit/389e351ab94aed3a97fbf7f83dcc79ba29e196c9))
+* **rate-limit:** enforce crawl RPM at HTTP transport level ([f79fc68](https://github.com/gkoos/confluence2md/commit/f79fc6827864ae0a5107e563cd3414b7b3d95535))
+* **retry:** wire retry config and transport ([56a18a8](https://github.com/gkoos/confluence2md/commit/56a18a8ab9a9a1582154e596b773e951c1d2cc39))
+
+
+### Bug Fixes
+
+* **rate-limit:** apply per-attempt host-scoped limiting with concurrency burst ([4b231ed](https://github.com/gkoos/confluence2md/commit/4b231edd4636b89d39c84cf0eb5abc24cdbcab0d))
+
 ## [0.2.0](https://github.com/gkoos/confluence2md/compare/v0.1.3...v0.2.0) (2026-05-23)
 
 
