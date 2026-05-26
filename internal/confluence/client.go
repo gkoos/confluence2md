@@ -25,11 +25,12 @@ type Client struct {
 }
 
 // NewClient creates an authenticated Confluence Cloud client.
-func NewClient(baseURL, username, token string, retry config.RetryConfig) (*Client, error) {
+func NewClient(baseURL, username, token string, retry config.RetryConfig, rateLimitRPM int) (*Client, error) {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	baseURL = strings.TrimSuffix(baseURL, "/wiki")
 
-	transport := newRetryTransport(http.DefaultTransport, retry.MaxAttempts, retry.InitialBackoffMS)
+	retryTransport := newRetryTransport(http.DefaultTransport, retry.MaxAttempts, retry.InitialBackoffMS)
+	transport := newRateLimitTransport(retryTransport, rateLimitRPM)
 	httpClient := &http.Client{
 		Timeout:   20 * time.Second,
 		Transport: transport,

@@ -81,7 +81,8 @@ crawl:
   max_depth: 3
   # Maximum concurrent API requests
   concurrency: 5
-  # Requests per minute (Confluence Cloud limit is ~300/min per token)
+  # Target HTTP requests per minute across all Confluence API calls
+  # (transport-level limiter; Confluence Cloud is ~300/min per token)
   rate_limit_rpm: 250
 
 output:

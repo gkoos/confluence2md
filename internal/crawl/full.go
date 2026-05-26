@@ -60,7 +60,6 @@ type CrawlSession struct {
 	config        *config.Config
 	maxDepth      int
 	concurrency   int
-	rateLimit     int // requests per minute
 	seedSpaceKey  string // resolved alpha space key for title lookups
 	nodeHandler   CrawlNodeHandler
 	previousPages map[string]store.PageRecord
@@ -73,8 +72,6 @@ type CrawlSession struct {
 
 	// Concurrency control
 	semaphore    chan struct{}
-	rateTicker   *time.Ticker
-	rateLimitCh  chan struct{}
 	
 	// Work tracking
 	pendingWork  sync.WaitGroup
@@ -95,14 +92,12 @@ func NewCrawlSession(client *confluence.Client, cfg *config.Config, seedSpaceKey
 		config:       cfg,
 		maxDepth:     cfg.Crawl.MaxDepth,
 		concurrency:  cfg.Crawl.Concurrency,
-		rateLimit:    cfg.Crawl.RateLimitRPM,
 		seedSpaceKey: seedSpaceKey,
 
 		queue:       make(chan queueItem, 10000), // large buffer to avoid blocking enqueue
 		visited:     make(map[int64]bool),
 		results:     make(map[int64]*CrawledPage),
 		semaphore:   make(chan struct{}),
-		rateLimitCh: make(chan struct{}, 1),
 	}
 
 	// Default to full mode behavior; updates mode can override this callback.
@@ -130,13 +125,6 @@ func (cs *CrawlSession) EnableUpdatesMode(previousPages map[string]store.PageRec
 func (cs *CrawlSession) Run(ctx context.Context, seedPageIDs []int64) (map[int64]*CrawledPage, error) {
 	// Initialize semaphore with concurrency limit
 	cs.semaphore = make(chan struct{}, cs.concurrency)
-
-	// Initialize rate limiter (tokens per minute)
-	cs.rateTicker = time.NewTicker(time.Minute / time.Duration(cs.rateLimit))
-	defer cs.rateTicker.Stop()
-
-	// Start rate limiter goroutine
-	go cs.runRateLimiter()
 
 	// Start worker goroutines
 	var workerWg sync.WaitGroup
@@ -166,16 +154,6 @@ func (cs *CrawlSession) Run(ctx context.Context, seedPageIDs []int64) (map[int64
 	return cs.results, nil
 }
 
-// runRateLimiter ensures we don't exceed rate limit
-func (cs *CrawlSession) runRateLimiter() {
-	for range cs.rateTicker.C {
-		select {
-		case cs.rateLimitCh <- struct{}{}:
-		default:
-		}
-	}
-}
-
 // worker processes items from the queue
 func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
@@ -189,9 +167,6 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 
 		// Acquire semaphore slot
 		cs.semaphore <- struct{}{}
-
-		// Respect rate limit
-		<-cs.rateLimitCh
 
 		// Process node via mode-specific callback.
 		result := cs.nodeHandler(ctx, item.pageID, item.depth)

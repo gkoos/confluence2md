@@ -27,6 +27,11 @@ Checks:
 
 ### Rate limiting and transient API errors
 
+Current behavior:
+
+- `crawl.rate_limit_rpm` is enforced at HTTP transport level (per outbound API request).
+- `crawl.concurrency` controls crawler worker parallelism, not a separate request budget.
+
 Typical symptoms:
 
 - 429 responses
@@ -110,6 +115,8 @@ Updates-mode dirty checks compare previous page metadata against current lightwe
 **Rate limits:**
 
 Confluence Cloud enforces ~300 requests per minute per token. The crawler's default `rate_limit_rpm: 250` is conservative to leave headroom.
+
+The limiter is applied per HTTP request across all crawl operations (page fetches, comment/attachment pagination calls, title resolution calls, and related API requests).
 
 - If you only crawl one small space: 250 rpm is safe; no tuning needed.
 - If you crawl multiple large spaces in the same account: measure your crawl time and quota usage. If you consistently hit 429 responses, reduce concurrency or rpm further.
