@@ -1,12 +1,13 @@
 module github.com/gkoos/confluence2md
 
-go 1.24
+go 1.25.0
 
 require (
 	github.com/ctreminiom/go-atlassian/v2 v2.12.0
 	github.com/gosimple/slug v1.15.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
+	golang.org/x/time v0.15.0
 )
 
 require (

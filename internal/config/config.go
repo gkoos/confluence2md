@@ -97,6 +97,12 @@ func (c *Config) Validate() error {
 	if c.Output.Dir == "" {
 		errs = append(errs, "output.dir is required")
 	}
+	if c.Retry.MaxAttempts < 1 {
+		errs = append(errs, "retry.max_attempts must be >= 1")
+	}
+	if c.Retry.InitialBackoffMS < 1 {
+		errs = append(errs, "retry.initial_backoff_ms must be >= 1")
+	}
 
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))

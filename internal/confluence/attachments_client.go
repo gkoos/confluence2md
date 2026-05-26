@@ -84,19 +84,17 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 
 	redirectEndpoint := fmt.Sprintf("%s/wiki/rest/api/content/%s/child/attachment/%s/download", c.baseURL, attachment.PageID, attachment.ID)
 
-	noRedirectClient := &http.Client{
-		Timeout: c.httpClient.Timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
 	req, err := c.newAuthedRequest(ctx, http.MethodGet, redirectEndpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build attachment redirect request: %w", err)
 	}
 
-	resp, err := noRedirectClient.Do(req)
+	transport := c.httpClient.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+
+	resp, err := transport.RoundTrip(req)
 	if err != nil {
 		return nil, fmt.Errorf("request attachment redirect URI: %w", err)
 	}

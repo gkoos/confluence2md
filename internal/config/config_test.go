@@ -18,6 +18,10 @@ func TestValidate_RejectsNonPositiveConcurrencyAndRateLimit(t *testing.T) {
 			RateLimitRPM: 0,
 		},
 		Output: OutputConfig{Dir: "./output"},
+		Retry: RetryConfig{
+			MaxAttempts:      0,
+			InitialBackoffMS: 0,
+		},
 	}
 
 	err := cfg.Validate()
@@ -30,6 +34,12 @@ func TestValidate_RejectsNonPositiveConcurrencyAndRateLimit(t *testing.T) {
 	}
 	if !strings.Contains(msg, "crawl.rate_limit_rpm must be > 0") {
 		t.Fatalf("expected rate_limit_rpm validation error, got: %s", msg)
+	}
+	if !strings.Contains(msg, "retry.max_attempts must be >= 1") {
+		t.Fatalf("expected retry.max_attempts validation error, got: %s", msg)
+	}
+	if !strings.Contains(msg, "retry.initial_backoff_ms must be >= 1") {
+		t.Fatalf("expected retry.initial_backoff_ms validation error, got: %s", msg)
 	}
 }
 
@@ -46,6 +56,10 @@ func TestValidate_AcceptsPositiveConcurrencyAndRateLimit(t *testing.T) {
 			RateLimitRPM: 250,
 		},
 		Output: OutputConfig{Dir: "./output"},
+		Retry: RetryConfig{
+			MaxAttempts:      3,
+			InitialBackoffMS: 1000,
+		},
 	}
 
 	if err := cfg.Validate(); err != nil {
