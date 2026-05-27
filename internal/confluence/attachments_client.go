@@ -47,31 +47,6 @@ func (c *Client) GetPageAttachments(ctx context.Context, pageID int64) ([]Attach
 	return all, nil
 }
 
-// GetAttachmentDetail fetches a single attachment using the v2 attachment endpoint.
-func (c *Client) GetAttachmentDetail(ctx context.Context, attachmentID string) (*AttachmentData, error) {
-	attachment, response, err := c.api.Attachment.Get(ctx, attachmentID, 0, true)
-	if err != nil {
-		if response != nil {
-			return nil, fmt.Errorf("get attachment detail %s (status %d): %w", attachmentID, response.Code, err)
-		}
-		return nil, fmt.Errorf("get attachment detail %s: %w", attachmentID, err)
-	}
-
-	downloadURL := strings.TrimSpace(attachment.DownloadLink)
-	if downloadURL != "" {
-		downloadURL = resolveNextEndpoint(c.baseURL, downloadURL)
-	}
-
-	return &AttachmentData{
-		ID:            strings.TrimSpace(attachment.ID),
-		PageID:        strings.TrimSpace(attachment.PageID),
-		Filename:      strings.TrimSpace(attachment.Title),
-		MediaType:     strings.TrimSpace(attachment.MediaType),
-		FileSizeBytes: int64(attachment.FileSize),
-		DownloadURL:   downloadURL,
-	}, nil
-}
-
 // DownloadAttachment downloads binary attachment content.
 // Discovery remains v2; binary retrieval follows the documented redirect endpoint.
 func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentData) ([]byte, error) {

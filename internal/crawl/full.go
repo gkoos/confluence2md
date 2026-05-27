@@ -493,13 +493,6 @@ func (cs *CrawlSession) enqueueChildren(parentDepth int, childPageIDs []int64) {
 	}
 }
 
-// GetResults returns the accumulated crawl results
-func (cs *CrawlSession) GetResults() map[int64]*CrawledPage {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-	return cs.results
-}
-
 // Stats returns crawl statistics
 func (cs *CrawlSession) Stats() map[string]interface{} {
 	cs.mu.RLock()

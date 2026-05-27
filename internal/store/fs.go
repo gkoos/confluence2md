@@ -149,34 +149,6 @@ func (w *Writer) MarkCompletedCheckpoint(mode string, startedAt, completedAt tim
 	return nil
 }
 
-// WritePage writes page content to disk and records it in metadata.
-func (w *Writer) WritePage(pageID, title, sourceURL, storageContent string) (string, error) {
-	filename := generateFilename(title, pageID)
-	filepath := filepath.Join(w.outputDir, filename)
-
-	if err := os.WriteFile(filepath, []byte(storageContent), 0644); err != nil {
-		return "", fmt.Errorf("write page file %s: %w", filename, err)
-	}
-
-	record := PageRecord{
-		ID:        pageID,
-		Title:     title,
-		LocalPath: filename,
-		Version:   0,
-		CrawledAt: time.Now(),
-		SourceURL: sourceURL,
-	}
-	if len(storageContent) > 500 {
-		record.StorageFormat = storageContent[:500]
-	} else {
-		record.StorageFormat = storageContent
-	}
-
-	w.metadata.Pages[pageID] = record
-
-	return filename, nil
-}
-
 // AddPage adds a crawled page to metadata with full graph information.
 func (w *Writer) AddPage(pageID string, pageRecord PageRecord) error {
 	filename := generateFilename(pageRecord.Title, pageID)
