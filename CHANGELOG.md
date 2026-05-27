@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4](https://github.com/gkoos/confluence2md/compare/v0.4.3...v0.4.4) (2026-05-27)
+
+
+### Bug Fixes
+
+* dead code removed ([#30](https://github.com/gkoos/confluence2md/issues/30)) ([21d310e](https://github.com/gkoos/confluence2md/commit/21d310ecfb83ba2d8e06dbc2a7f2554cb0dffdb0))
+
 ## [0.4.3](https://github.com/gkoos/confluence2md/compare/v0.4.2...v0.4.3) (2026-05-27)
 
 
