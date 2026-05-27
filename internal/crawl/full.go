@@ -184,14 +184,26 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for item := range cs.queue {
+		// Check for context cancellation before processing
+		if ctx.Err() != nil {
+			cs.pendingWork.Done()
+			continue
+		}
+
 		// Check depth limit
 		if item.depth > cs.maxDepth {
 			cs.pendingWork.Done()
 			continue
 		}
 
-		// Acquire semaphore slot
-		cs.semaphore <- struct{}{}
+		// Acquire semaphore slot with context awareness
+		select {
+		case cs.semaphore <- struct{}{}:
+			// Acquired successfully
+		case <-ctx.Done():
+			cs.pendingWork.Done()
+			continue
+		}
 
 		// Process node via mode-specific callback.
 		result := cs.nodeHandler(ctx, item.pageID, item.depth)
