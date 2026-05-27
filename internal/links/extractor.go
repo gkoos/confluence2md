@@ -8,17 +8,9 @@ import (
 	"strings"
 )
 
-// ExtractPageIDsFromStorageXML extracts Confluence page IDs from <a href> links
-// in the raw storage format XML. These are explicit URL-based links with numeric IDs
-// in the path (e.g. /wiki/spaces/SFD/pages/6511563548/...).
-func ExtractPageIDsFromStorageXML(storageXML, baseURL string) []int64 {
-	pageIDs, _ := ExtractPageIDsFromStorageXMLWithStats(storageXML, baseURL)
-	return pageIDs
-}
-
-// ExtractPageIDsFromStorageXMLWithStats behaves like ExtractPageIDsFromStorageXML and
-// also returns how many absolute links were skipped because their host didn't match
-// the configured Confluence base URL host.
+// ExtractPageIDsFromStorageXMLWithStats extracts Confluence page IDs from <a href> links
+// in the raw storage format XML and returns how many absolute links were skipped because
+// their host didn't match the configured Confluence base URL host.
 func ExtractPageIDsFromStorageXMLWithStats(storageXML, baseURL string) ([]int64, int) {
 	hrefRegex := regexp.MustCompile(`href="([^"]+)"`)
 	matches := hrefRegex.FindAllStringSubmatch(storageXML, -1)
@@ -73,35 +65,6 @@ func ExtractLinkedTitlesFromStorageXML(storageXML string) []string {
 	}
 
 	return titles
-}
-
-// ExtractPageIDsFromMarkdown finds all Confluence page IDs from Markdown link targets
-// Handles multiple Confluence URL formats and returns deduplicated, validated IDs
-func ExtractPageIDsFromMarkdown(markdown string) []int64 {
-	// Match Markdown links: [text](url)
-	// Regex: \[[^\]]*\]\(([^)]+)\)
-	markdownLinkRegex := regexp.MustCompile(`\[[^\]]*\]\(([^)]+)\)`)
-	matches := markdownLinkRegex.FindAllStringSubmatch(markdown, -1)
-
-	seen := make(map[int64]bool)
-	var pageIDs []int64
-
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-
-		linkTarget := match[1]
-
-		// Extract page ID from the URL
-		pageID := ExtractPageIDFromURL(linkTarget)
-		if pageID > 0 && !seen[pageID] {
-			seen[pageID] = true
-			pageIDs = append(pageIDs, pageID)
-		}
-	}
-
-	return pageIDs
 }
 
 // ExtractPageIDFromURL extracts the numeric page ID from various Confluence URL formats
@@ -159,11 +122,6 @@ func extractIDFromPath(path string) int64 {
 	}
 
 	return 0
-}
-
-// ValidatePageID checks if a page ID is valid (positive integer)
-func ValidatePageID(pageID int64) bool {
-	return pageID > 0
 }
 
 // DedupPageIDs removes duplicate page IDs while preserving order
