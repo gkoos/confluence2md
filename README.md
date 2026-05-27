@@ -203,17 +203,17 @@ output/
 Each exported page starts with deterministic YAML front matter:
 
 - Required fields:
-  - `page_id`
-  - `title`
-  - `source_url`
-  - `canonical_url`
-  - `space_key`
-  - `is_seed`
-  - `crawled_at`
+  - `page_id` - Numeric Confluence page ID
+  - `title` - Page title
+  - `source_url` - Original Confluence page URL
+  - `canonical_url` - Canonical Confluence page URL
+  - `space_key` - Alphanumeric Confluence space key (e.g., "SFD", "DS", "SPACE")
+  - `is_seed` - Boolean indicating whether this page was a configured seed
+  - `crawled_at` - ISO 8601 timestamp when the page was crawled
 - Optional fields:
-  - `comment_count` (present only when greater than 0)
-  - `comments_fetch_error` (present only when non-empty)
-  - `attachments` (present only when non-empty)
+  - `comment_count` - Number of comments on the page (present only when greater than 0)
+  - `comments_fetch_error` - Error message if comment fetching failed (present only when non-empty)
+  - `attachments` - List of downloaded attachment filenames (present only when non-empty)
 
 Seed semantics:
 
@@ -269,14 +269,17 @@ The diagram below shows how the full crawl mode works at a high level. For more 
 ```
 confluence2md/
 ├── .gitignore
+├── .goreleaser.yaml
 ├── LICENSE
 ├── README.md
+├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── Taskfile.yml
 ├── config.example.yaml
 ├── config.yaml                      # local runtime config (gitignored)
 ├── go.mod / go.sum
 ├── bin/                             # compiled binaries (gitignored)
+├── docs/                            # additional documentation
 │
 ├── cmd/
 │   └── crawler/
@@ -294,8 +297,11 @@ confluence2md/
     │
     ├── confluence/
     │   ├── client.go                # Confluence API client methods
+    │   ├── attachments_client.go    # attachment metadata and download methods
     │   ├── comments_client.go       # comment fetch + author enrichment flow
     │   ├── http_helpers.go          # authenticated request/response helpers
+    │   ├── rate_limit_transport.go  # HTTP transport with rate limiting
+    │   ├── retry_transport.go       # HTTP transport with retry logic
     │   ├── parsing.go               # shared API parsing helpers
     │   └── models.go                # local types mapped from API responses
     │
@@ -314,6 +320,7 @@ confluence2md/
     │
     ├── store/
     │   ├── fs.go                    # page writes + metadata.json persistence
+    │   ├── frontmatter.go           # YAML front matter generation
     │   └── attachments.go           # attachment file download/persistence helpers
 ```
 

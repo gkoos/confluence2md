@@ -71,6 +71,8 @@ func verifyConfluenceAccess(client *confluenceclient.Client) error {
 	return nil
 }
 
+// extractSpaceKeyFromSeed extracts the alphanumeric space key (e.g., "SFD", "DS")
+// from a Confluence URL. This key is used for metadata, front matter, and CQL queries.
 func extractSpaceKeyFromSeed(seed string) string {
 	parsed, err := url.Parse(seed)
 	if err != nil {

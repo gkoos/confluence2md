@@ -104,7 +104,8 @@ func (c *Client) GetPageBySeed(ctx context.Context, seed string) (*PageData, err
 }
 
 // GetPageByID fetches a page by numeric ID with full content and returns structured page data.
-func (c *Client) GetPageByID(ctx context.Context, pageID int64) (*FullPageData, error) {
+// spaceKey should be the alphanumeric space key (e.g., "SFD", "DS") for proper metadata and CQL lookups.
+func (c *Client) GetPageByID(ctx context.Context, pageID int64, spaceKey string) (*FullPageData, error) {
 	page, response, err := c.api.Page.Get(ctx, int(pageID), "storage", false, 0)
 	if err != nil {
 		if response != nil {
@@ -122,11 +123,9 @@ func (c *Client) GetPageByID(ctx context.Context, pageID int64) (*FullPageData, 
 		data.Version.Number = page.Version.Number
 	}
 
-	// SpaceID is available but not the key; we'll need to look it up separately or construct URL
-	if page.SpaceID != "" {
-		// Note: PageScheme doesn't include space key, only ID
-		// For now, we construct the URL with just the page ID
-		data.Space.Key = page.SpaceID
+	// Store the alphanumeric space key (not the numeric ID from API)
+	if spaceKey != "" {
+		data.Space.Key = spaceKey
 	}
 
 	if page.Body != nil && page.Body.Storage != nil {
