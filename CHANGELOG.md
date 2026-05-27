@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2](https://github.com/gkoos/confluence2md/compare/v0.4.1...v0.4.2) (2026-05-27)
+
+
+### Bug Fixes
+
+* use alphanumeric space key instead of numeric ID ([#26](https://github.com/gkoos/confluence2md/issues/26)) ([2c98703](https://github.com/gkoos/confluence2md/commit/2c98703a0f466d3e6f7fe156aefaed5c0f109c19))
+
 ## [0.4.1](https://github.com/gkoos/confluence2md/compare/v0.4.0...v0.4.1) (2026-05-26)
 
 
