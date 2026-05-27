@@ -243,7 +243,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	}
 
 	// Fetch page by ID
-	fetchedPage, err := cs.client.GetPageByID(ctx, pageID)
+	fetchedPage, err := cs.client.GetPageByID(ctx, pageID, cs.seedSpaceKey)
 	if err != nil {
 		page.FetchError = fmt.Sprintf("fetch failed: %v", err)
 		return &NodeHandlerResult{Page: page, FetchError: page.FetchError}
@@ -296,14 +296,9 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	page.OutgoingLinks, page.ExternalLinksSkipped = links.ExtractPageIDsFromStorageXMLWithStats(fetchedPage.Body.Storage.Value, cs.config.BaseURL())
 
 	// Resolve title-based links to page IDs via CQL search
-	// Use the seed space key (alphanumeric) — page.SpaceKey is a numeric ID from the API
-	spaceKeyForLookup := cs.seedSpaceKey
-	if spaceKeyForLookup == "" {
-		spaceKeyForLookup = page.SpaceKey
-	}
 	titles := links.ExtractLinkedTitlesFromStorageXML(fetchedPage.Body.Storage.Value)
 	if len(titles) > 0 {
-		resolved := cs.resolveTitlesToIDs(ctx, titles, spaceKeyForLookup)
+		resolved := cs.resolveTitlesToIDs(ctx, titles, page.SpaceKey)
 		page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, resolved...))
 	}
 
