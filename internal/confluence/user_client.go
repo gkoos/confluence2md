@@ -66,7 +66,9 @@ func (c *Client) GetUserDisplayName(ctx context.Context, accountID string) strin
 		globalUserCache.mu.Unlock()
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != 200 {
 		fmt.Printf("Warning: failed to fetch user %s (status %d)\n", accountID, resp.StatusCode)
