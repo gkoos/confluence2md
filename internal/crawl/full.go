@@ -39,6 +39,19 @@ type CrawledPage struct {
 	Attachments          []confluence.AttachmentData
 	AttachmentSignature  string
 	AttachmentFetchError string
+
+	// Temporal metadata
+	CreatedAt      string
+	LastModifiedAt string
+
+	// Author metadata
+	CreatedByID        string
+	CreatedByName      string
+	LastModifiedByID   string
+	LastModifiedByName string
+
+	// Hierarchy metadata
+	ParentID *int64
 }
 
 type queueDropSample struct {
@@ -268,6 +281,27 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	page.SpaceKey = fetchedPage.Space.Key
 	page.StorageXML = fetchedPage.Body.Storage.Value
 
+	// Temporal metadata
+	page.CreatedAt = fetchedPage.CreatedAt
+	page.LastModifiedAt = fetchedPage.Version.CreatedAt
+
+	// Author metadata
+	page.CreatedByID = fetchedPage.AuthorID
+	page.LastModifiedByID = fetchedPage.Version.AuthorID
+	if page.CreatedByID != "" {
+		page.CreatedByName = cs.client.GetUserDisplayName(ctx, page.CreatedByID)
+	}
+	if page.LastModifiedByID != "" {
+		page.LastModifiedByName = cs.client.GetUserDisplayName(ctx, page.LastModifiedByID)
+	}
+
+	// Hierarchy metadata
+	if fetchedPage.ParentID != "" {
+		if parentID, err := strconv.ParseInt(fetchedPage.ParentID, 10, 64); err == nil {
+			page.ParentID = &parentID
+		}
+	}
+
 	// Convert to Markdown
 	markdown, err := convert.ToMarkdown(fetchedPage.Body.Storage.Value)
 	if err != nil {
@@ -361,6 +395,17 @@ func (cs *CrawlSession) processUpdatesNode(ctx context.Context, pageID int64, de
 		CrawledAt:           previous.CrawledAt,
 		Depth:               depth,
 		AttachmentSignature: previous.AttachmentSignature,
+		CreatedByID:         previous.CreatedByID,
+		CreatedByName:       previous.CreatedByName,
+		LastModifiedByID:    previous.LastModifiedByID,
+		LastModifiedByName:  previous.LastModifiedByName,
+		ParentID:            previous.ConfluenceParentID,
+	}
+	if !previous.CreatedAt.IsZero() {
+		cleanPage.CreatedAt = previous.CreatedAt.Format(time.RFC3339)
+	}
+	if !previous.LastModifiedAt.IsZero() {
+		cleanPage.LastModifiedAt = previous.LastModifiedAt.Format(time.RFC3339)
 	}
 	if cs.config.Attachments.Download && strings.TrimSpace(state.AttachmentSignature) != "" {
 		cleanPage.AttachmentSignature = state.AttachmentSignature

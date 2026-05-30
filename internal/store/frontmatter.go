@@ -42,6 +42,38 @@ func renderFrontMatter(pageID string, pageRecord PageRecord, seedPageIDs []strin
 	b.WriteString(strconv.Quote(pageRecord.CrawledAt.UTC().Format("2006-01-02T15:04:05Z")))
 	b.WriteString("\n")
 
+	// Temporal metadata
+	if !pageRecord.CreatedAt.IsZero() {
+		b.WriteString("created_at: ")
+		b.WriteString(strconv.Quote(pageRecord.CreatedAt.UTC().Format("2006-01-02T15:04:05Z")))
+		b.WriteString("\n")
+	}
+
+	if createdBy := strings.TrimSpace(pageRecord.CreatedByName); createdBy != "" {
+		b.WriteString("created_by: ")
+		b.WriteString(strconv.Quote(createdBy))
+		b.WriteString("\n")
+	}
+
+	if !pageRecord.LastModifiedAt.IsZero() {
+		b.WriteString("last_modified_at: ")
+		b.WriteString(strconv.Quote(pageRecord.LastModifiedAt.UTC().Format("2006-01-02T15:04:05Z")))
+		b.WriteString("\n")
+	}
+
+	if lastModifiedBy := strings.TrimSpace(pageRecord.LastModifiedByName); lastModifiedBy != "" {
+		b.WriteString("last_modified_by: ")
+		b.WriteString(strconv.Quote(lastModifiedBy))
+		b.WriteString("\n")
+	}
+
+	// Hierarchy metadata
+	if pageRecord.ConfluenceParentID != nil {
+		b.WriteString("confluence_parent_id: ")
+		b.WriteString(strconv.FormatInt(*pageRecord.ConfluenceParentID, 10))
+		b.WriteString("\n")
+	}
+
 	if pageRecord.CommentCount > 0 {
 		b.WriteString("comment_count: ")
 		b.WriteString(strconv.Itoa(pageRecord.CommentCount))

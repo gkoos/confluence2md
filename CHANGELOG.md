@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+* Page metadata enrichment for RAG use cases: temporal fields (created_at, last_modified_at), authorship (created_by, last_modified_by with account IDs), and hierarchy (confluence_parent_id)
+* User display name resolution with in-memory caching via Confluence REST API v1
+* Comment author display name resolution (previously only showed account IDs)
+* Comprehensive metadata.json structure with temporal, authorship, and hierarchy information
+
 ## [0.4.4](https://github.com/gkoos/confluence2md/compare/v0.4.3...v0.4.4) (2026-05-27)
 
 

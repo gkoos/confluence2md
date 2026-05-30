@@ -31,6 +31,19 @@ type PageRecord struct {
 	Attachments         []string  `json:"attachments,omitempty"`          // saved filenames in attachments/
 	AttachmentSignature string    `json:"attachment_signature,omitempty"` // stable attachment metadata signature for dirty checks
 	StorageFormat       string    `json:"storage_format_sample,omitempty"` // First 500 chars for diagnostic
+	
+	// Temporal metadata
+	CreatedAt       time.Time `json:"created_at"`
+	LastModifiedAt  time.Time `json:"last_modified_at"`
+	
+	// Author metadata
+	CreatedByID        string `json:"created_by_id"`
+	CreatedByName      string `json:"created_by_name,omitempty"`
+	LastModifiedByID   string `json:"last_modified_by_id"`
+	LastModifiedByName string `json:"last_modified_by_name,omitempty"`
+	
+	// Hierarchy metadata
+	ConfluenceParentID *int64 `json:"confluence_parent_id,omitempty"`
 }
 
 // Metadata represents the top-level metadata.json structure.

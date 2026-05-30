@@ -198,6 +198,29 @@ output/
   └── {page-id}_{original-filename}
 ```
 
+### metadata.json Structure
+
+The `metadata.json` file contains comprehensive page metadata and the bidirectional link graph:
+
+- **Top-level fields:**
+  - `crawl_started_at` - Timestamp when current crawl run started
+  - `last_completed_crawl_started_at` / `last_completed_crawl_completed_at` - Last completed crawl timestamps
+  - `last_successful_crawl_started_at` / `last_successful_crawl_completed_at` - Last fully successful crawl timestamps
+  - `seed_page_ids` - Array of seed page IDs used for this crawl
+  - `pages` - Object mapping page IDs to page records
+
+- **Per-page record fields:**
+  - Core: `id`, `title`, `local_path`, `version`, `crawled_at`, `source_url`, `canonical_url`, `space_key`, `depth`
+  - Links: `outgoing_links` (page IDs this page links to), `incoming_links` (page IDs linking to this page)
+  - Temporal: `created_at`, `last_modified_at` (ISO 8601 timestamps)
+  - Authorship: `created_by_id`, `created_by_name`, `last_modified_by_id`, `last_modified_by_name`
+  - Hierarchy: `confluence_parent_id` (parent page ID in Confluence tree structure)
+  - Comments: `comment_count`, `comments_last_fetched`, `comments_fetch_error`
+  - Attachments: `attachments` (array of filenames), `attachment_signature`
+  - Diagnostics: `fetch_error`, `storage_format_sample` (first 500 chars of storage XML)
+
+Author names are resolved via the Confluence REST API at crawl time with in-memory caching. If name resolution fails, the account ID is preserved and the name field is omitted.
+
 ### Markdown Front Matter
 
 Each exported page starts with deterministic YAML front matter:
@@ -210,7 +233,15 @@ Each exported page starts with deterministic YAML front matter:
   - `space_key` - Alphanumeric Confluence space key (e.g., "SFD", "DS", "SPACE")
   - `is_seed` - Boolean indicating whether this page was a configured seed
   - `crawled_at` - ISO 8601 timestamp when the page was crawled
-- Optional fields:
+- Temporal metadata (optional, omitted if not available):
+  - `created_at` - ISO 8601 timestamp when the page was originally created in Confluence
+  - `last_modified_at` - ISO 8601 timestamp when the page was last modified in Confluence
+- Authorship metadata (optional, omitted if not available):
+  - `created_by` - Display name of the user who created the page
+  - `last_modified_by` - Display name of the user who last modified the page
+- Hierarchy metadata (optional, omitted if not available):
+  - `confluence_parent_id` - Numeric page ID of the parent page in Confluence page hierarchy
+- Other optional fields:
   - `comment_count` - Number of comments on the page (present only when greater than 0)
   - `comments_fetch_error` - Error message if comment fetching failed (present only when non-empty)
   - `attachments` - List of downloaded attachment filenames (present only when non-empty)

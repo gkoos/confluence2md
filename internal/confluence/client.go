@@ -115,12 +115,17 @@ func (c *Client) GetPageByID(ctx context.Context, pageID int64, spaceKey string)
 	}
 
 	data := &FullPageData{
-		ID:    pageID,
-		Title: page.Title,
+		ID:        pageID,
+		Title:     page.Title,
+		CreatedAt: page.CreatedAt,
+		AuthorID:  page.AuthorID,
+		ParentID:  page.ParentID,
 	}
 
 	if page.Version != nil {
 		data.Version.Number = page.Version.Number
+		data.Version.CreatedAt = page.Version.CreatedAt
+		data.Version.AuthorID = page.Version.AuthorID
 	}
 
 	// Store the alphanumeric space key (not the numeric ID from API)
