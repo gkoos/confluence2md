@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/gkoos/confluence2md/compare/v0.4.4...v0.5.0) (2026-05-30)
+
+
+### Features
+
+* add temporal, authorship, and hierarchy metadata ([#34](https://github.com/gkoos/confluence2md/issues/34)) ([ab45780](https://github.com/gkoos/confluence2md/commit/ab457805742ac01a0f9ad5451ee83b3ebcbc2439))
+
 ## [Unreleased]
 
 ### Added
