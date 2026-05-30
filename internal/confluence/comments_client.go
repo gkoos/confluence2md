@@ -12,9 +12,8 @@ import (
 // GetPageComments fetches comments and looks up author display names.
 func (c *Client) GetPageComments(ctx context.Context, pageID int64) ([]CommentData, error) {
 	rootEndpoint := fmt.Sprintf("%s/wiki/api/v2/pages/%d/footer-comments?limit=100&body-format=storage", c.baseURL, pageID)
-	authorIDs := make(map[string]bool)
 
-	comments, err := c.fetchV2CommentsFromEndpoint(ctx, rootEndpoint, authorIDs)
+	comments, err := c.fetchV2CommentsFromEndpoint(ctx, rootEndpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +37,7 @@ func (c *Client) GetPageComments(ctx context.Context, pageID int64) ([]CommentDa
 		visited[commentID] = true
 
 		childrenEndpoint := fmt.Sprintf("%s/wiki/api/v2/footer-comments/%s/children?limit=100&body-format=storage", c.baseURL, url.PathEscape(commentID))
-		children, err := c.fetchV2CommentsFromEndpoint(ctx, childrenEndpoint, authorIDs)
+		children, err := c.fetchV2CommentsFromEndpoint(ctx, childrenEndpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -51,14 +50,13 @@ func (c *Client) GetPageComments(ctx context.Context, pageID int64) ([]CommentDa
 		}
 	}
 
-	// Populate author display names.
-	if len(authorIDs) > 0 {
-		displayNames, err := c.getUserDisplayNames(ctx, authorIDs)
-		if err == nil {
-			for i := range comments {
-				if displayName, ok := displayNames[comments[i].AuthorID]; ok {
-					comments[i].Author = displayName
-				}
+	// Populate author display names using cached lookups.
+	for i := range comments {
+		if comments[i].AuthorID != "" {
+			comments[i].Author = c.GetUserDisplayName(ctx, comments[i].AuthorID)
+			// If GetUserDisplayName returns empty, keep the authorID as fallback
+			if comments[i].Author == "" {
+				comments[i].Author = comments[i].AuthorID
 			}
 		}
 	}
@@ -66,7 +64,7 @@ func (c *Client) GetPageComments(ctx context.Context, pageID int64) ([]CommentDa
 	return comments, nil
 }
 
-func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint string, authorIDs map[string]bool) ([]CommentData, error) {
+func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint string) ([]CommentData, error) {
 	comments := make([]CommentData, 0)
 
 	for {
@@ -116,16 +114,13 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 
 		for _, item := range payload.Results {
 			authorID := strings.TrimSpace(item.Version.AuthorID)
-			if authorID != "" {
-				authorIDs[authorID] = true
-			}
 
 			created := parseConfluenceTime(item.Version.CreatedAt)
 			comments = append(comments, CommentData{
 				ID:        strings.TrimSpace(item.ID),
 				ParentID:  strings.TrimSpace(item.ParentCommentID),
 				AuthorID:  authorID,
-				Author:    authorID,
+				Author:    "", // Will be populated by GetUserDisplayName later
 				CreatedAt: created,
 				UpdatedAt: created,
 				Body:      strings.TrimSpace(item.Body.Storage.Value),
@@ -140,60 +135,4 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 	}
 
 	return comments, nil
-}
-
-// getUserDisplayNames fetches display names for the given account IDs using the bulk Users API.
-// Returns a map of accountId -> displayName.
-func (c *Client) getUserDisplayNames(ctx context.Context, authorIDs map[string]bool) (map[string]string, error) {
-	if len(authorIDs) == 0 {
-		return make(map[string]string), nil
-	}
-
-	accountIDs := make([]string, 0, len(authorIDs))
-	for id := range authorIDs {
-		accountIDs = append(accountIDs, id)
-	}
-
-	requestBody := map[string][]string{"accountIds": accountIDs}
-	bodyBytes, _ := json.Marshal(requestBody)
-
-	endpoint := fmt.Sprintf("%s/wiki/api/v2/users-bulk", c.baseURL)
-	req, err := c.newAuthedRequest(ctx, http.MethodPost, endpoint, strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return nil, fmt.Errorf("build users lookup request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request users lookup: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody := readLimitedBody(resp.Body, 2048)
-		return nil, fmt.Errorf("users lookup failed: status=%d body=%s", resp.StatusCode, respBody)
-	}
-
-	var payload struct {
-		Results []struct {
-			AccountID   string `json:"accountId"`
-			DisplayName string `json:"displayName"`
-		} `json:"results"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("unmarshal users lookup response: %w", err)
-	}
-
-	result := make(map[string]string)
-	for _, user := range payload.Results {
-		if user.DisplayName != "" {
-			result[user.AccountID] = user.DisplayName
-		}
-	}
-
-	return result, nil
 }

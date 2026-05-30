@@ -269,6 +269,25 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		Attachments:         savedAttachments,
 		AttachmentSignature: crawledPage.AttachmentSignature,
 		StorageFormat:       markdown,
+		CreatedByID:         crawledPage.CreatedByID,
+		CreatedByName:       crawledPage.CreatedByName,
+		LastModifiedByID:    crawledPage.LastModifiedByID,
+		LastModifiedByName:  crawledPage.LastModifiedByName,
+	}
+
+	// Parse temporal metadata
+	if crawledPage.CreatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, crawledPage.CreatedAt); err == nil {
+			record.CreatedAt = t
+		}
+	}
+	if crawledPage.LastModifiedAt != "" {
+		if t, err := time.Parse(time.RFC3339, crawledPage.LastModifiedAt); err == nil {
+			record.LastModifiedAt = t
+		}
+	}
+	if crawledPage.ParentID != nil {
+		record.ConfluenceParentID = crawledPage.ParentID
 	}
 
 	if err := rc.writer.AddPage(pageIDStr, record); err != nil {

@@ -2,7 +2,6 @@ package confluence
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -47,9 +46,8 @@ func TestFetchV2CommentsFromEndpoint_Paginates(t *testing.T) {
 		t.Fatalf("new client: %v", err)
 	}
 
-	authorIDs := make(map[string]bool)
 	endpoint := ts.URL + "/wiki/api/v2/pages/123/footer-comments?limit=100&body-format=storage"
-	comments, err := client.fetchV2CommentsFromEndpoint(context.Background(), endpoint, authorIDs)
+	comments, err := client.fetchV2CommentsFromEndpoint(context.Background(), endpoint)
 	if err != nil {
 		t.Fatalf("fetch comments: %v", err)
 	}
@@ -59,9 +57,6 @@ func TestFetchV2CommentsFromEndpoint_Paginates(t *testing.T) {
 	}
 	if comments[0].ID != "c1" || comments[1].ID != "c2" {
 		t.Fatalf("unexpected IDs: %#v", comments)
-	}
-	if !authorIDs["a1"] || !authorIDs["a2"] {
-		t.Fatalf("expected both author IDs, got %#v", authorIDs)
 	}
 }
 
@@ -98,25 +93,18 @@ func TestGetPageCommentsV2_FetchesChildrenAndDisplayNames(t *testing.T) {
 		_, _ = w.Write([]byte(`{"results": [], "_links": {}}`))
 	})
 
-	router.HandleFunc("/wiki/api/v2/users-bulk", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Fatalf("expected POST, got %s", r.Method)
-		}
-		var payload map[string][]string
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			t.Fatalf("decode users payload: %v", err)
-		}
-		if len(payload["accountIds"]) != 2 {
-			t.Fatalf("expected 2 account IDs, got %#v", payload)
-		}
-
+	// Mock user lookup endpoints (v1 REST API)
+	router.HandleFunc("/wiki/rest/api/user", func(w http.ResponseWriter, r *http.Request) {
+		accountID := r.URL.Query().Get("accountId")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"results": [
-				{"accountId": "acc-1", "displayName": "Simon Dunn"},
-				{"accountId": "acc-2", "displayName": "Natacha Tomkinson"}
-			]
-		}`))
+		switch accountID {
+		case "acc-1":
+			_, _ = w.Write([]byte(`{"accountId": "acc-1", "displayName": "Simon Dunn"}`))
+		case "acc-2":
+			_, _ = w.Write([]byte(`{"accountId": "acc-2", "displayName": "Natacha Tomkinson"}`))
+		default:
+			http.Error(w, "not found", 404)
+		}
 	})
 
 	ts := httptest.NewServer(router)
