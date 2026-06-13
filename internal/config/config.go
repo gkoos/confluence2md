@@ -23,11 +23,12 @@ type ConfluenceConfig struct {
 }
 
 type CrawlConfig struct {
-	Seeds        []string `mapstructure:"seeds"`
-	MaxDepth     int      `mapstructure:"max_depth"`
-	Concurrency  int      `mapstructure:"concurrency"`
-	RateLimitRPM int      `mapstructure:"rate_limit_rpm"`
-	QueueSize    int      `mapstructure:"queue_size"`
+	Seeds          []string `mapstructure:"seeds"`
+	MaxDepth        int      `mapstructure:"max_depth"`
+	Concurrency     int      `mapstructure:"concurrency"`
+	RateLimitRPM    int      `mapstructure:"rate_limit_rpm"`
+	QueueSize       int      `mapstructure:"queue_size"`
+	FollowChildren  bool     `mapstructure:"follow_children"`
 }
 
 type OutputConfig struct {

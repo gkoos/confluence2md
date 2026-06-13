@@ -346,9 +346,10 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 		page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, commentIDs...))
 	}
 
-	// If the page contains a "children" macro, the child pages are not represented
-	// as inline links in ADF — fetch them via the API and add to outgoing links.
-	if links.HasChildrenMacro(fetchedPage.Body.ADF.Value) {
+	// If the page contains a "children" macro, or follow_children is enabled,
+	// child pages are not represented as inline links in ADF — fetch them via
+	// the API and add to outgoing links.
+	if links.HasChildrenMacro(fetchedPage.Body.ADF.Value) || cs.config.Crawl.FollowChildren {
 		childIDs, err := cs.client.GetPageChildIDs(ctx, pageID)
 		if err != nil {
 			// Non-fatal: log but continue with whatever inline links we already have.

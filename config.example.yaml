@@ -17,6 +17,10 @@ crawl:
   rate_limit_rpm: 250
   # Maximum buffered discovered pages waiting to be processed
   queue_size: 10000
+  # Also crawl child pages in the Confluence page tree hierarchy, not just
+  # pages linked from the page body. Useful when pages exist only as sidebar
+  # children with no inline links or macros. Shares max_depth with link traversal.
+  follow_children: false
 
 output:
   # Directory to write Markdown files, attachments, and metadata
