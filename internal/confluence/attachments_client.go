@@ -35,6 +35,7 @@ func (c *Client) GetPageAttachments(ctx context.Context, pageID int64) ([]Attach
 				MediaType:     strings.TrimSpace(r.MediaType),
 				FileSizeBytes: int64(r.FileSize),
 				DownloadURL:   downloadURL,
+				FileID:        strings.TrimSpace(r.FileID),
 			})
 		}
 

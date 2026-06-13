@@ -1,33 +1,12 @@
 package convert
 
 import (
-	"encoding/xml"
 	"strings"
-	"unicode"
 )
 
-// ToMarkdown converts Confluence storage format XML to Markdown.
-func ToMarkdown(storageXML string) (string, error) {
-	parser := newMarkdownParser()
-
-	decoder := xml.NewDecoder(strings.NewReader(storageXML))
-	decoder.Strict = false
-	decoder.AutoClose = nil
-
-	for {
-		token, err := decoder.Token()
-		if err != nil {
-			break
-		}
-		parser.handleToken(token)
-	}
-
-	// Clean up and normalize
-	result := parser.out.String()
-	result = strings.TrimSpace(result)
-	result = normalizeMarkdown(result)
-
-	return result, nil
+// ToMarkdown converts Confluence ADF JSON to Markdown.
+func ToMarkdown(adfJSON string) (string, error) {
+	return adfToMarkdown(adfJSON)
 }
 
 func normalizeMarkdown(s string) string {
@@ -135,63 +114,4 @@ func isMarkdownHeading(line string) bool {
 
 func isHorizontalRule(line string) bool {
 	return line == "---" || line == "***" || line == "___"
-}
-
-func normalizeInlineSpacing(s string) string {
-	for strings.Contains(s, "  ") {
-		s = strings.ReplaceAll(s, "  ", " ")
-	}
-
-	// Avoid artifacts around formatting and link delimiters.
-	replacer := strings.NewReplacer(
-		"[ ", "[",
-		" ]", "]",
-		"( ", "(",
-		" )", ")",
-	)
-
-	return strings.TrimSpace(replacer.Replace(s))
-}
-
-func needsInterTokenSpace(current, next string) bool {
-	if current == "" || next == "" {
-		return false
-	}
-
-	last := current[len(current)-1]
-	first := next[0]
-
-	// If we already have whitespace at the join point, never add another.
-	if unicode.IsSpace(rune(last)) || unicode.IsSpace(rune(first)) {
-		return false
-	}
-
-	if last == '*' || last == '_' {
-		if strings.HasSuffix(current, "**") || strings.HasSuffix(current, "__") {
-			if len(current) == 2 {
-				return false
-			}
-			prev := rune(current[len(current)-3])
-			if unicode.IsSpace(prev) || strings.ContainsRune("([{/>", prev) {
-				return false
-			}
-		} else {
-			if len(current) == 1 {
-				return false
-			}
-			prev := rune(current[len(current)-2])
-			if unicode.IsSpace(prev) || strings.ContainsRune("([{/>", prev) {
-				return false
-			}
-		}
-	}
-
-	if strings.ContainsRune("[(/", rune(last)) {
-		return false
-	}
-	if strings.ContainsRune(")]*,.;:!?/", rune(first)) {
-		return false
-	}
-
-	return true
 }

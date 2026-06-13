@@ -212,11 +212,6 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		logPageWithLevel("WARN", pageID, "enrich links failed: %v", err)
 	}
 
-	markdown, err = resolveSearchLinksToPageURLs(markdown, rc.client, rc.spaceKey)
-	if err != nil {
-		logPageWithLevel("WARN", pageID, "resolve search links failed: %v", err)
-	}
-
 	if crawledPage.CommentFetchError != "" {
 		logPageWithLevel("WARN", pageID, "%s", crawledPage.CommentFetchError)
 		metrics.commentFetchFailures++
@@ -364,7 +359,7 @@ func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error
 	}, nil
 }
 
-func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFinalizeResult) {
+func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFinalizeResult, elapsed time.Duration) {
 	stats := rc.crawler.Stats()
 	fmt.Printf("\n=== Crawl Complete ===\n")
 	fmt.Printf("Mode: %s\n", rc.mode)
@@ -410,4 +405,5 @@ func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFin
 	}
 	fmt.Printf("Managed artifacts deleted as stale: %d\n", finalizeResult.reconcileStats.Deleted)
 	fmt.Printf("Output directory: %s\n", rc.cfg.Output.Dir)
+	fmt.Printf("Total time: %s\n", elapsed.Round(time.Second))
 }

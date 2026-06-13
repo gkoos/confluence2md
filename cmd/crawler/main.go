@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	cfgFile string
-	mode    string
+	cfgFile   string
+	mode      string
+	startTime time.Time
 )
 
 var rootCmd = &cobra.Command{
@@ -37,7 +38,7 @@ func run(cmd *cobra.Command, args []string) error {
 	rc, err := bootstrapRun(mode, cfgFile)
 	if err != nil {
 		return err
-}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
@@ -55,8 +56,7 @@ func run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	printRunSummary(rc, metrics, finalizeResult)
-
+	printRunSummary(rc, metrics, finalizeResult, time.Since(startTime))
 	return nil
 }
 
@@ -83,6 +83,7 @@ func validate(cmd *cobra.Command, args []string) error {
 }
 
 func main() {
+	startTime = time.Now()
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

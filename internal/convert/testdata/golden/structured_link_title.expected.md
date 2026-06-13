@@ -1,3 +1,3 @@
 ## References
 
-See [Document Upload Technical Idempotency and Duplicate Callback Handling](/wiki/pages/viewpage.action?spaceKey=SFD&title=Document+Upload+Technical+Idempotency+and+Duplicate+Callback+Handling) for more details.
+See [Document Upload Technical Idempotency and Duplicate Callback Handling](https://example.atlassian.net/wiki/spaces/SFD/pages/123456/Document-Upload) for more details.

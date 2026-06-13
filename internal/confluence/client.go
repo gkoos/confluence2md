@@ -1,8 +1,8 @@
 package confluence
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -80,7 +80,7 @@ func (c *Client) GetPageBySeed(ctx context.Context, seed string) (*PageData, err
 		return nil, err
 	}
 
-	page, response, err := c.api.Page.Get(ctx, pageID, "storage", false, 0)
+	page, response, err := c.api.Page.Get(ctx, pageID, "atlas_doc_format", false, 0)
 	if err != nil {
 		if response != nil {
 			return nil, fmt.Errorf("failed to fetch page %d (status %d): %w", pageID, response.Code, err)
@@ -96,8 +96,8 @@ func (c *Client) GetPageBySeed(ctx context.Context, seed string) (*PageData, err
 	if page.Version != nil {
 		data.Version = page.Version.Number
 	}
-	if page.Body != nil && page.Body.Storage != nil {
-		data.StorageFormat = page.Body.Storage.Value
+	if page.Body != nil && page.Body.AtlasDocFormat != nil {
+		data.StorageFormat = page.Body.AtlasDocFormat.Value
 	}
 
 	return data, nil
@@ -106,7 +106,7 @@ func (c *Client) GetPageBySeed(ctx context.Context, seed string) (*PageData, err
 // GetPageByID fetches a page by numeric ID with full content and returns structured page data.
 // spaceKey should be the alphanumeric space key (e.g., "SFD", "DS") for proper metadata and CQL lookups.
 func (c *Client) GetPageByID(ctx context.Context, pageID int64, spaceKey string) (*FullPageData, error) {
-	page, response, err := c.api.Page.Get(ctx, int(pageID), "storage", false, 0)
+	page, response, err := c.api.Page.Get(ctx, int(pageID), "atlas_doc_format", false, 0)
 	if err != nil {
 		if response != nil {
 			return nil, fmt.Errorf("failed to fetch page %d (status %d): %w", pageID, response.Code, err)
@@ -133,8 +133,8 @@ func (c *Client) GetPageByID(ctx context.Context, pageID int64, spaceKey string)
 		data.Space.Key = spaceKey
 	}
 
-	if page.Body != nil && page.Body.Storage != nil {
-		data.Body.Storage.Value = page.Body.Storage.Value
+	if page.Body != nil && page.Body.AtlasDocFormat != nil {
+		data.Body.ADF.Value = page.Body.AtlasDocFormat.Value
 	}
 
 	// Construct canonical URL - Confluence Cloud defaults to viewpage.action format
@@ -206,62 +206,106 @@ func (c *Client) GetPageTitleByID(ctx context.Context, pageID int) (string, erro
 	return page.Title, nil
 }
 
-// ResolvePageURLByTitle resolves a Confluence page title to a canonical page URL.
-func (c *Client) ResolvePageURLByTitle(ctx context.Context, title, spaceKey string) (string, error) {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return "", fmt.Errorf("title is empty")
+// SearchPagesByCQL executes a CQL search against the Confluence REST v1 search API
+// and returns the page IDs of all matching content entries. Results are paginated
+// automatically using start/limit offsets.
+func (c *Client) SearchPagesByCQL(ctx context.Context, cql string) ([]int64, error) {
+	type contentEntry struct {
+		ID string `json:"id"`
+	}
+	type resultEntry struct {
+		Content contentEntry `json:"content"`
+	}
+	type searchPage struct {
+		Results   []resultEntry `json:"results"`
+		TotalSize int           `json:"totalSize"`
 	}
 
-	escapedTitle := strings.ReplaceAll(title, `"`, `\"`)
-	cql := fmt.Sprintf(`type="page" and title="%s"`, escapedTitle)
-	if strings.TrimSpace(spaceKey) != "" {
-		cql += fmt.Sprintf(` and space="%s"`, strings.TrimSpace(spaceKey))
-	}
+	var ids []int64
+	seen := make(map[int64]bool)
+	const limit = 100
+	start := 0
 
-	endpoint := fmt.Sprintf("%s/wiki/rest/api/content/search?cql=%s&limit=1", c.baseURL, url.QueryEscape(cql))
-	req, err := c.newAuthedRequest(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return "", fmt.Errorf("build search request: %w", err)
-	}
+	for {
+		params := url.Values{}
+		params.Set("cql", cql)
+		params.Set("limit", strconv.Itoa(limit))
+		params.Set("start", strconv.Itoa(start))
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("search page by title: %w", err)
-	}
-	defer func() {
+		endpoint := fmt.Sprintf("%s/wiki/rest/api/search?%s", c.baseURL, params.Encode())
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build CQL search request: %w", err)
+		}
+		req.SetBasicAuth(c.username, c.token)
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("CQL search request: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("CQL search returned HTTP %d", resp.StatusCode)
+		}
+
+		var page searchPage
+		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("decode CQL search response: %w", err)
+		}
 		_ = resp.Body.Close()
-	}()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body := readLimitedBody(resp.Body, 1024)
-		return "", fmt.Errorf("search page by title failed: status=%d body=%s", resp.StatusCode, body)
+		for _, r := range page.Results {
+			id, err := strconv.ParseInt(r.Content.ID, 10, 64)
+			if err == nil && id > 0 && !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+
+		start += len(page.Results)
+		if start >= page.TotalSize || len(page.Results) == 0 {
+			break
+		}
 	}
 
-	var payload struct {
-		Results []struct {
-			ID    string `json:"id"`
-			Links struct {
-				WebUI string `json:"webui"`
-			} `json:"_links"`
-		} `json:"results"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return "", fmt.Errorf("decode search response: %w", err)
-	}
-
-	if len(payload.Results) == 0 {
-		return "", fmt.Errorf("no page found for title %q", title)
-	}
-
-	result := payload.Results[0]
-	if result.Links.WebUI != "" {
-		return c.baseURL + "/wiki" + result.Links.WebUI, nil
-	}
-	if result.ID != "" {
-		return c.baseURL + "/wiki/spaces/" + strings.TrimSpace(spaceKey) + "/pages/" + result.ID, nil
-	}
-
-	return "", fmt.Errorf("page found for title %q but no resolvable URL", title)
+	return ids, nil
 }
+
+// GetPageChildIDs fetches all direct child page IDs for a given page, following pagination.
+func (c *Client) GetPageChildIDs(ctx context.Context, pageID int64) ([]int64, error) {
+	var ids []int64
+	cursor := ""
+	const limit = 100
+
+	for {
+		chunk, _, err := c.api.Page.GetsByParent(ctx, int(pageID), cursor, limit)
+		if err != nil {
+			return nil, fmt.Errorf("fetch children of page %d: %w", pageID, err)
+		}
+		if chunk == nil {
+			break
+		}
+		for _, child := range chunk.Results {
+			id, err := strconv.ParseInt(child.ID, 10, 64)
+			if err == nil && id > 0 {
+				ids = append(ids, id)
+			}
+		}
+		if chunk.Links == nil || chunk.Links.Next == "" {
+			break
+		}
+		// Extract cursor from the next link query string
+		if u, err := url.Parse(chunk.Links.Next); err == nil {
+			cursor = u.Query().Get("cursor")
+		}
+		if cursor == "" {
+			break
+		}
+	}
+
+	return ids, nil
+}
+
+

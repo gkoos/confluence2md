@@ -15,11 +15,11 @@ The crawler uses Confluence Cloud comments and users endpoints.
 
 Root comments endpoint:
 
-- `GET /wiki/api/v2/pages/{pageId}/footer-comments?limit=100&body-format=storage`
+- `GET /wiki/api/v2/pages/{pageId}/footer-comments?limit=100&body-format=atlas_doc_format`
 
 Child replies endpoint:
 
-- `GET /wiki/api/v2/footer-comments/{commentId}/children?limit=100&body-format=storage`
+- `GET /wiki/api/v2/footer-comments/{commentId}/children?limit=100&body-format=atlas_doc_format`
 
 Author enrichment endpoint:
 
@@ -55,5 +55,5 @@ Any response with `_links.next` continues pagination. Relative `next` links are 
 `GetPageComments` returns a flat `[]CommentData` including parent IDs.
 
 - Thread/order logic is handled in [internal/convert/comments.go](../internal/convert/comments.go).
-- Body text is passed in storage format and converted to plain text during rendering.
+- Body text is passed as ADF JSON (`atlas_doc_format`) and converted to Markdown by `ToMarkdown` during rendering.
 
