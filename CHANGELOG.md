@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/gkoos/confluence2md/compare/v1.0.0...v1.1.0) (2026-06-13)
+
+
+### Features
+
+* add follow_children config flag to crawl child pages via Confluence page tree (closes [#36](https://github.com/gkoos/confluence2md/issues/36)) ([#41](https://github.com/gkoos/confluence2md/issues/41)) ([3c9f5e4](https://github.com/gkoos/confluence2md/commit/3c9f5e4b497f7c95a688d5bc1c4e37319b864660))
+
 ## [1.0.0](https://github.com/gkoos/confluence2md/compare/v0.5.0...v1.0.0) (2026-06-13)
 
 
