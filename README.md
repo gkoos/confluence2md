@@ -53,6 +53,7 @@ Pre-built binaries are available on the [Releases](https://github.com/gkoos/conf
 
 ### Requirements
 
+- **Confluence Cloud only.** This tool uses the Atlassian Document Format (ADF) API, which is exclusive to Confluence Cloud. Confluence Data Center and Server are not supported.
 - A valid Atlassian API token with read access to the target spaces
 
 You can generate an Atlassian API token from your Atlassian account security page:
