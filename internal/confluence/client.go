@@ -245,16 +245,16 @@ func (c *Client) SearchPagesByCQL(ctx context.Context, cql string) ([]int64, err
 			return nil, fmt.Errorf("CQL search request: %w", err)
 		}
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("CQL search returned HTTP %d", resp.StatusCode)
 		}
 
 		var page searchPage
 		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("decode CQL search response: %w", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		for _, r := range page.Results {
 			id, err := strconv.ParseInt(r.Content.ID, 10, 64)

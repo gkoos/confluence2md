@@ -100,7 +100,4 @@ func renderInlineExtension(node ADFNode, ctx *RenderContext, buf *strings.Builde
 	renderExtensionNode(node, ctx, buf)
 }
 
-// stripScheme removes attachment:// for display in link labels.
-func stripScheme(s, scheme string) string {
-	return strings.TrimPrefix(s, scheme)
-}
+

@@ -381,8 +381,8 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 			if err != nil || title == "" {
 				title = strconv.FormatInt(id, 10)
 			}
-			relatedBuf.WriteString(fmt.Sprintf("- [%s](%s/wiki/pages/viewpage.action?pageId=%d)\n",
-				title, cs.config.BaseURL(), id))
+			fmt.Fprintf(&relatedBuf, "- [%s](%s/wiki/pages/viewpage.action?pageId=%d)\n",
+				title, cs.config.BaseURL(), id)
 		}
 		page.Markdown += relatedBuf.String()
 	}
