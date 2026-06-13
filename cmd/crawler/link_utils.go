@@ -17,7 +17,7 @@ var (
 	urlOnlyMarkdownLinkPattern = regexp.MustCompile(`\[(https?://[^\]\s]+)\]\((https?://[^)\s]+)\)`)
 	pageIDFromURLPattern       = regexp.MustCompile(`/pages/(\d+)`)
 	relativeRootLinkPattern    = regexp.MustCompile(`\]\((/[^)\s]+)\)`)
-	searchLinkPattern          = regexp.MustCompile(`\[([^\]]+)\]\((https?://[^)\s]+/wiki/search\?text=[^)\s]+)\)`)
+
 	attachmentLinkPattern      = regexp.MustCompile(`\]\(attachment://([^)]+)\)`)
 )
 
@@ -83,55 +83,26 @@ func absolutizeConfluenceLinks(markdown, baseURL string) (string, error) {
 	return out, nil
 }
 
-func resolveSearchLinksToPageURLs(markdown string, client *confluenceclient.Client, spaceKey string) (string, error) {
-	resolved := make(map[string]string)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	out := searchLinkPattern.ReplaceAllStringFunc(markdown, func(match string) string {
-		submatches := searchLinkPattern.FindStringSubmatch(match)
-		if len(submatches) != 3 {
-			return match
-		}
-
-		label := strings.TrimSpace(submatches[1])
-		target := strings.TrimSpace(submatches[2])
-		if label == "" || target == "" {
-			return match
-		}
-
-		cacheKey := spaceKey + "|" + label
-		if cached, ok := resolved[cacheKey]; ok {
-			return "[" + label + "](" + cached + ")"
-		}
-
-		pageURL, err := client.ResolvePageURLByTitle(ctx, label, spaceKey)
-		if err != nil {
-			return match
-		}
-
-		resolved[cacheKey] = pageURL
-		return "[" + label + "](" + pageURL + ")"
-	})
-
-	return out, nil
-}
-
 func rewriteAttachmentLinks(markdown string, results []store.AttachmentResult) string {
 	if len(results) == 0 || !strings.Contains(markdown, "attachment://") {
 		return markdown
 	}
 
 	byOriginal := make(map[string]string, len(results))
+	byFileID := make(map[string]string, len(results))
 	for _, r := range results {
-		if r.Error != nil || r.Filename == "" || strings.TrimSpace(r.OriginalName) == "" {
+		if r.Error != nil || r.Filename == "" {
 			continue
 		}
-		byOriginal[r.OriginalName] = store.AttachmentLocalPath(r.Filename)
+		if strings.TrimSpace(r.OriginalName) != "" {
+			byOriginal[r.OriginalName] = store.AttachmentLocalPath(r.Filename)
+		}
+		if strings.TrimSpace(r.FileID) != "" {
+			byFileID[r.FileID] = store.AttachmentLocalPath(r.Filename)
+		}
 	}
 
-	if len(byOriginal) == 0 {
+	if len(byOriginal) == 0 && len(byFileID) == 0 {
 		return markdown
 	}
 
@@ -141,12 +112,13 @@ func rewriteAttachmentLinks(markdown string, results []store.AttachmentResult) s
 			return match
 		}
 
-		originalName := strings.TrimSpace(submatches[1])
-		localPath, ok := byOriginal[originalName]
-		if !ok {
-			return match
+		key := strings.TrimSpace(submatches[1])
+		if localPath, ok := byOriginal[key]; ok {
+			return "](" + localPath + ")"
 		}
-
-		return "](" + localPath + ")"
+		if localPath, ok := byFileID[key]; ok {
+			return "](" + localPath + ")"
+		}
+		return match
 	})
 }

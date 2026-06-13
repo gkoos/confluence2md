@@ -12,10 +12,11 @@ import (
 
 // AttachmentResult holds the outcome of downloading a single attachment.
 type AttachmentResult struct {
-	Filename    string // saved as {page-id}_{original-filename}
+	Filename     string // saved as {page-id}_{original-filename}
 	OriginalName string
-	Skipped     bool   // true if over size limit
-	Error       error  // non-fatal: page export still proceeds
+	FileID       string // Confluence Media Services UUID (fileId); matches ADF media.attrs.id
+	Skipped      bool   // true if over size limit
+	Error        error  // non-fatal: page export still proceeds
 }
 
 // DownloadPageAttachments downloads all attachments for a page and writes them to output/attachments/.
@@ -84,6 +85,7 @@ func DownloadPageAttachments(
 		}
 
 		result.Filename = savedFilename
+		result.FileID = a.FileID
 		results = append(results, result)
 	}
 

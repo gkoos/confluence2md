@@ -1,19 +1,20 @@
 package links
 
 import (
-	"html"
+	"encoding/json"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-// ExtractPageIDsFromStorageXMLWithStats extracts Confluence page IDs from <a href> links
-// in the raw storage format XML and returns how many absolute links were skipped because
-// their host didn't match the configured Confluence base URL host.
-func ExtractPageIDsFromStorageXMLWithStats(storageXML, baseURL string) ([]int64, int) {
-	hrefRegex := regexp.MustCompile(`href="([^"]+)"`)
-	matches := hrefRegex.FindAllStringSubmatch(storageXML, -1)
+// ExtractPageIDsFromADFWithStats extracts Confluence page IDs from ADF JSON by scanning
+// link mark href attributes and inlineCard/blockCard url attributes. Returns how many
+// absolute links were skipped because their host didn't match the configured Confluence
+// base URL host.
+func ExtractPageIDsFromADFWithStats(adfJSON, baseURL string) ([]int64, int) {
+	hrefRegex := regexp.MustCompile(`"href"\s*:\s*"([^"]+)"`)
+	urlRegex := regexp.MustCompile(`"url"\s*:\s*"([^"]+)"`)
 
 	seen := make(map[int64]bool)
 	var pageIDs []int64
@@ -21,50 +22,28 @@ func ExtractPageIDsFromStorageXMLWithStats(storageXML, baseURL string) ([]int64,
 
 	allowedHost := hostFromBaseURL(baseURL)
 
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-		target := strings.TrimSpace(match[1])
-		if allowed, isExternal := isAllowedCrawlTarget(target, allowedHost); !allowed {
-			if isExternal {
-				externalSkipped++
+	for _, re := range []*regexp.Regexp{hrefRegex, urlRegex} {
+		for _, match := range re.FindAllStringSubmatch(adfJSON, -1) {
+			if len(match) < 2 {
+				continue
 			}
-			continue
-		}
+			target := strings.TrimSpace(match[1])
+			if allowed, isExternal := isAllowedCrawlTarget(target, allowedHost); !allowed {
+				if isExternal {
+					externalSkipped++
+				}
+				continue
+			}
 
-		id := ExtractPageIDFromURL(target)
-		if id > 0 && !seen[id] {
-			seen[id] = true
-			pageIDs = append(pageIDs, id)
+			id := ExtractPageIDFromURL(target)
+			if id > 0 && !seen[id] {
+				seen[id] = true
+				pageIDs = append(pageIDs, id)
+			}
 		}
 	}
 
 	return pageIDs, externalSkipped
-}
-
-// ExtractLinkedTitlesFromStorageXML extracts page titles from <ri:page ri:content-title="...">
-// elements. These are structured ac:link refs that have no numeric ID in the XML —
-// the title must be resolved to an ID separately via the API.
-func ExtractLinkedTitlesFromStorageXML(storageXML string) []string {
-	titleRegex := regexp.MustCompile(`ri:content-title="([^"]+)"`)
-	matches := titleRegex.FindAllStringSubmatch(storageXML, -1)
-
-	seen := make(map[string]bool)
-	var titles []string
-
-	for _, match := range matches {
-		if len(match) < 2 {
-			continue
-		}
-		title := html.UnescapeString(match[1])
-		if title != "" && !seen[title] {
-			seen[title] = true
-			titles = append(titles, title)
-		}
-	}
-
-	return titles
 }
 
 // ExtractPageIDFromURL extracts the numeric page ID from various Confluence URL formats
@@ -163,4 +142,71 @@ func isAllowedCrawlTarget(target, allowedHost string) (bool, bool) {
 
 	isAllowed := strings.EqualFold(u.Host, allowedHost)
 	return isAllowed, !isAllowed
+}
+
+// HasChildrenMacro reports whether the ADF JSON contains a Confluence "children"
+// extension node (the built-in "Child pages" macro). When present the crawler
+// should fetch child pages via the API and add them to the outgoing link set.
+func HasChildrenMacro(adfJSON string) bool {
+	return strings.Contains(adfJSON, `"extensionKey":"children"`) ||
+		strings.Contains(adfJSON, `"extensionKey": "children"`)
+}
+
+// adfNode is a minimal ADF node used only for CQL extraction.
+type adfNode struct {
+	Type    string                 `json:"type"`
+	Attrs   map[string]interface{} `json:"attrs"`
+	Content []adfNode              `json:"content"`
+}
+
+// ExtractContentByLabelCQLs returns the CQL query strings from all
+// "contentbylabel" extension nodes in the ADF document. Each such
+// node stores its CQL under attrs.parameters.macroParams.cql.value.
+func ExtractContentByLabelCQLs(adfJSON string) []string {
+	// Fast pre-check — avoid full JSON parse when macro is absent.
+	if !strings.Contains(adfJSON, `"contentbylabel"`) {
+		return nil
+	}
+
+	var doc adfNode
+	if err := json.Unmarshal([]byte(adfJSON), &doc); err != nil {
+		return nil
+	}
+
+	var results []string
+	var walk func(adfNode)
+	walk = func(n adfNode) {
+		if n.Type == "extension" {
+			if ek, _ := n.Attrs["extensionKey"].(string); ek == "contentbylabel" {
+				if cql := cqlFromMacroParams(n.Attrs); cql != "" {
+					results = append(results, cql)
+				}
+			}
+		}
+		for _, child := range n.Content {
+			walk(child)
+		}
+	}
+	walk(doc)
+	return results
+}
+
+// cqlFromMacroParams drills into the nested ADF macro params structure:
+//
+//	attrs.parameters.macroParams.cql.value
+func cqlFromMacroParams(attrs map[string]interface{}) string {
+	params, _ := attrs["parameters"].(map[string]interface{})
+	if params == nil {
+		return ""
+	}
+	macroParams, _ := params["macroParams"].(map[string]interface{})
+	if macroParams == nil {
+		return ""
+	}
+	cqlEntry, _ := macroParams["cql"].(map[string]interface{})
+	if cqlEntry == nil {
+		return ""
+	}
+	v, _ := cqlEntry["value"].(string)
+	return v
 }

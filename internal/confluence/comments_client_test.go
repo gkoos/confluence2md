@@ -32,7 +32,7 @@ func TestFetchV2CommentsFromEndpoint_Paginates(t *testing.T) {
 				"id": "c1",
 				"parentCommentId": "",
 				"version": {"createdAt": "2026-02-13T10:00:00Z", "authorId": "a1"},
-				"body": {"storage": {"value": "<p>first</p>"}}
+				"body": {"atlas_doc_format": {"value": ""}}
 			}],
 			"_links": {"next": "/wiki/api/v2/pages/123/footer-comments?cursor=abc"}
 		}`))
@@ -46,7 +46,7 @@ func TestFetchV2CommentsFromEndpoint_Paginates(t *testing.T) {
 		t.Fatalf("new client: %v", err)
 	}
 
-	endpoint := ts.URL + "/wiki/api/v2/pages/123/footer-comments?limit=100&body-format=storage"
+	endpoint := ts.URL + "/wiki/api/v2/pages/123/footer-comments?limit=100&body-format=atlas_doc_format"
 	comments, err := client.fetchV2CommentsFromEndpoint(context.Background(), endpoint)
 	if err != nil {
 		t.Fatalf("fetch comments: %v", err)
@@ -69,7 +69,7 @@ func TestGetPageCommentsV2_FetchesChildrenAndDisplayNames(t *testing.T) {
 				"id": "p1",
 				"parentCommentId": "",
 				"version": {"createdAt": "2026-02-13T10:00:00Z", "authorId": "acc-1"},
-				"body": {"storage": {"value": "<p>parent</p>"}}
+				"body": {"atlas_doc_format": {"value": ""}}
 			}],
 			"_links": {}
 		}`))
@@ -82,7 +82,7 @@ func TestGetPageCommentsV2_FetchesChildrenAndDisplayNames(t *testing.T) {
 				"id": "c1",
 				"parentCommentId": "p1",
 				"version": {"createdAt": "2026-02-17T10:00:00Z", "authorId": "acc-2"},
-				"body": {"storage": {"value": "<p>child</p>"}}
+				"body": {"atlas_doc_format": {"value": ""}}
 			}],
 			"_links": {}
 		}`))

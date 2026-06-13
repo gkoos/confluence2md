@@ -17,5 +17,8 @@ output/
 # Module download cache
 vendor/
 
+# Local development/diagnostic scripts
+tools/
+
 # Editor settings
 .vscode/

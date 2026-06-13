@@ -16,4 +16,4 @@ Allow retries before first success.
 const a = 1;
 ```
 
-Ticket [FLS1-20](/browse/FLS1-20)
+Ticket [FLS1-20](https://jira.atlassian.net/browse/FLS1-20)

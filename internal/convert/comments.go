@@ -1,18 +1,11 @@
 package convert
 
 import (
-	"html"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/gkoos/confluence2md/internal/confluence"
 )
-
-var htmlTagPattern = regexp.MustCompile(`<[^>]+>`)
-var brTagPattern = regexp.MustCompile(`(?i)<br\s*/?>`)
-var blockCloseTagPattern = regexp.MustCompile(`(?i)</(p|div|li|ul|ol|tr|table|blockquote|h[1-6]|ac:layout-cell|ac:layout-section|ac:task-list|ac:task|ac:structured-macro|ac:rich-text-body|ac:plain-text-body)>`)
-var blockOpenTagPattern = regexp.MustCompile(`(?i)<(p|div|li|ul|ol|tr|table|blockquote|h[1-6]|ac:layout-cell|ac:layout-section|ac:task-list|ac:task|ac:structured-macro|ac:rich-text-body|ac:plain-text-body)\b[^>]*>`)
 
 // CommentsToMarkdown renders comments in a plain, readable format.
 // Returns an empty string when no comments are available.
@@ -51,11 +44,9 @@ func CommentsToMarkdown(comments []confluence.CommentData) string {
 			body = "(empty comment)"
 		}
 
-		// Convert Confluence storage format to plain text, stripping HTML tags
-		// First, try to preserve author/attribution information if present
-		plain := stripHTMLPreservingParagraphs(body)
-		if plain != "" {
-			body = plain
+		// Convert ADF JSON body to Markdown
+		if rendered, err := ToMarkdown(body); err == nil && rendered != "" {
+			body = rendered
 		}
 
 		out.WriteString(body)
@@ -175,30 +166,4 @@ func orderCommentsForDisplay(comments []confluence.CommentData) []confluence.Com
 	return result
 }
 
-// stripHTMLPreservingParagraphs converts HTML storage format to plain text while preserving logical paragraph breaks
-func stripHTMLPreservingParagraphs(htmlBody string) string {
-	text := htmlBody
 
-	// Convert common block and line-break tags into explicit newlines first.
-	text = brTagPattern.ReplaceAllString(text, "\n")
-	text = blockCloseTagPattern.ReplaceAllString(text, "\n")
-	text = blockOpenTagPattern.ReplaceAllString(text, "\n")
-
-	// Remove all remaining HTML/XML tags
-	text = htmlTagPattern.ReplaceAllString(text, "")
-
-	// Unescape HTML entities
-	text = html.UnescapeString(text)
-
-	// Clean up excessive whitespace while preserving meaningful line breaks
-	lines := strings.Split(text, "\n")
-	var cleaned []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			cleaned = append(cleaned, trimmed)
-		}
-	}
-	
-	return strings.Join(cleaned, "\n")
-}

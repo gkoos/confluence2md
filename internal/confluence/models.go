@@ -27,7 +27,7 @@ type FullPageData struct {
 		Key string
 	}
 	Body struct {
-		Storage struct {
+		ADF struct {
 			Value string
 		}
 	}
@@ -38,12 +38,13 @@ type FullPageData struct {
 
 // AttachmentData represents a Confluence page attachment.
 type AttachmentData struct {
-	ID          string
-	PageID      string
-	Filename    string
-	MediaType   string
+	ID            string
+	PageID        string
+	Filename      string
+	MediaType     string
 	FileSizeBytes int64
-	DownloadURL string // absolute URL ready for authenticated download
+	DownloadURL   string // absolute URL ready for authenticated download
+	FileID        string // Confluence Media Services UUID (fileId from v2 API); matches ADF media.attrs.id
 }
 
 // CommentData represents a Confluence page comment used by the export pipeline.

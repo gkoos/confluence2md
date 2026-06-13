@@ -20,14 +20,14 @@ func TestCommentsToMarkdown_RendersSection(t *testing.T) {
 			ID:        "c1",
 			Author:    "Simon Dunn",
 			CreatedAt: time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC),
-			Body:      "<p>Hello <strong>world</strong></p>",
+			Body:      `{"version":1,"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello world"}]}]}`,
 		},
 		{
 			ID:        "c2",
 			ParentID:  "c1",
 			Author:    "Natacha Tomkinson",
 			CreatedAt: time.Date(2026, 5, 22, 10, 1, 0, 0, time.UTC),
-			Body:      "<p>Reply</p>",
+			Body:      `{"version":1,"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Reply"}]}]}`,
 		},
 	}
 
@@ -58,7 +58,7 @@ func TestCommentsToMarkdown_UsesAuthorIDFallback(t *testing.T) {
 			ID:        "c1",
 			AuthorID:  "acc-123",
 			CreatedAt: time.Date(2026, 2, 13, 0, 0, 0, 0, time.UTC),
-			Body:      "<p>Fallback author</p>",
+			Body:      `{"version":1,"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Fallback author"}]}]}`,
 		},
 	}
 
@@ -74,12 +74,12 @@ func TestCommentsToMarkdown_PreservesParagraphBoundaries(t *testing.T) {
 			ID:        "c1",
 			Author:    "Simon Dunn",
 			CreatedAt: time.Date(2026, 2, 13, 0, 0, 0, 0, time.UTC),
-			Body:      `<p data-node="x">Re the above</p><ac:structured-macro ac:name="note"><ac:rich-text-body><p>RPS have a business rule of ten files per upload.</p></ac:rich-text-body></ac:structured-macro>`,
+			Body: `{"version":1,"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Re the above"}]},{"type":"paragraph","content":[{"type":"text","text":"RPS have a business rule of ten files per upload."}]}]}`,
 		},
 	}
 
 	got := CommentsToMarkdown(comments)
-	if !strings.Contains(got, "Re the above\nRPS have a business rule of ten files per upload.") {
+	if !strings.Contains(got, "Re the above\n\nRPS have a business rule of ten files per upload.") {
 		t.Fatalf("expected paragraph boundary between lines, got:\n%s", got)
 	}
 }

@@ -11,7 +11,7 @@ import (
 
 // GetPageComments fetches comments and looks up author display names.
 func (c *Client) GetPageComments(ctx context.Context, pageID int64) ([]CommentData, error) {
-	rootEndpoint := fmt.Sprintf("%s/wiki/api/v2/pages/%d/footer-comments?limit=100&body-format=storage", c.baseURL, pageID)
+	rootEndpoint := fmt.Sprintf("%s/wiki/api/v2/pages/%d/footer-comments?limit=100&body-format=atlas_doc_format", c.baseURL, pageID)
 
 	comments, err := c.fetchV2CommentsFromEndpoint(ctx, rootEndpoint)
 	if err != nil {
@@ -36,7 +36,7 @@ func (c *Client) GetPageComments(ctx context.Context, pageID int64) ([]CommentDa
 		}
 		visited[commentID] = true
 
-		childrenEndpoint := fmt.Sprintf("%s/wiki/api/v2/footer-comments/%s/children?limit=100&body-format=storage", c.baseURL, url.PathEscape(commentID))
+		childrenEndpoint := fmt.Sprintf("%s/wiki/api/v2/footer-comments/%s/children?limit=100&body-format=atlas_doc_format", c.baseURL, url.PathEscape(commentID))
 		children, err := c.fetchV2CommentsFromEndpoint(ctx, childrenEndpoint)
 		if err != nil {
 			return nil, err
@@ -96,9 +96,9 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 					AuthorID  string `json:"authorId"`
 				} `json:"version"`
 				Body struct {
-					Storage struct {
-						Value string `json:"value"`
-					} `json:"storage"`
+				AtlasDocFormat struct {
+					Value string `json:"value"`
+				} `json:"atlas_doc_format"`
 				} `json:"body"`
 			} `json:"results"`
 			Links struct {
@@ -123,7 +123,7 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 				Author:    "", // Will be populated by GetUserDisplayName later
 				CreatedAt: created,
 				UpdatedAt: created,
-				Body:      strings.TrimSpace(item.Body.Storage.Value),
+				Body:      strings.TrimSpace(item.Body.AtlasDocFormat.Value),
 			})
 		}
 

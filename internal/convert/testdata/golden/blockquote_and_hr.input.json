@@ -1,0 +1,1 @@
+{"version":1,"type":"doc","content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Decision"}]},{"type":"blockquote","content":[{"type":"paragraph","content":[{"type":"text","text":"Use fileId as idempotency key."}]}]},{"type":"rule"},{"type":"paragraph","content":[{"type":"text","text":"This applies to callback processing only."}]}]}

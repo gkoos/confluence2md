@@ -25,7 +25,7 @@ type CrawledPage struct {
 	Comments       []confluence.CommentData
 	CommentCount   int
 	CommentFetchError string
-	StorageXML     string    // raw Confluence storage format XML
+	RawADF         string    // raw Confluence ADF JSON body
 	CanonicalURL   string
 	SpaceKey       string
 	OutgoingLinks  []int64   // page IDs of all linked pages
@@ -279,7 +279,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	page.CanonicalURL = fetchedPage.Links.Webui
 	page.Version = fetchedPage.Version.Number
 	page.SpaceKey = fetchedPage.Space.Key
-	page.StorageXML = fetchedPage.Body.Storage.Value
+	page.RawADF = fetchedPage.Body.ADF.Value
 
 	// Temporal metadata
 	page.CreatedAt = fetchedPage.CreatedAt
@@ -303,7 +303,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	}
 
 	// Convert to Markdown
-	markdown, err := convert.ToMarkdown(fetchedPage.Body.Storage.Value)
+	markdown, err := convert.ToMarkdown(fetchedPage.Body.ADF.Value)
 	if err != nil {
 		page.FetchError = fmt.Sprintf("convert failed: %v", err)
 		return &NodeHandlerResult{Page: page, FetchError: page.FetchError, Title: page.Title}
@@ -336,16 +336,55 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 		}
 	}
 
-	// Extract links from storage XML — two sources:
-	// 1. <a href> elements: yield numeric IDs directly from URL path
-	// 2. <ri:page ri:content-title> elements: yield page titles that need API resolution
-	page.OutgoingLinks, page.ExternalLinksSkipped = links.ExtractPageIDsFromStorageXMLWithStats(fetchedPage.Body.Storage.Value, cs.config.BaseURL())
+	// Extract outgoing page IDs from ADF JSON
+	page.OutgoingLinks, page.ExternalLinksSkipped = links.ExtractPageIDsFromADFWithStats(fetchedPage.Body.ADF.Value, cs.config.BaseURL())
 
-	// Resolve title-based links to page IDs via CQL search
-	titles := links.ExtractLinkedTitlesFromStorageXML(fetchedPage.Body.Storage.Value)
-	if len(titles) > 0 {
-		resolved := cs.resolveTitlesToIDs(ctx, titles, page.SpaceKey)
-		page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, resolved...))
+	// Also extract links from comment bodies so pages referenced only in
+	// comments are discovered and crawled.
+	for _, comment := range page.Comments {
+		commentIDs, _ := links.ExtractPageIDsFromADFWithStats(comment.Body, cs.config.BaseURL())
+		page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, commentIDs...))
+	}
+
+	// If the page contains a "children" macro, the child pages are not represented
+	// as inline links in ADF — fetch them via the API and add to outgoing links.
+	if links.HasChildrenMacro(fetchedPage.Body.ADF.Value) {
+		childIDs, err := cs.client.GetPageChildIDs(ctx, pageID)
+		if err != nil {
+			// Non-fatal: log but continue with whatever inline links we already have.
+			fmt.Printf("  [D%d] WARN  %d — children macro fetch failed: %v\n", depth, pageID, err)
+		} else {
+			page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, childIDs...))
+		}
+	}
+
+	// If the page contains a "contentbylabel" macro, the listed pages are not
+	// represented as inline links in ADF — execute the embedded CQL query,
+	// add matching page IDs to the outgoing link set, and append a "Related
+	// pages" section to the rendered markdown so the link rewriter can later
+	// convert these Confluence URLs into local relative paths.
+	for _, cql := range links.ExtractContentByLabelCQLs(fetchedPage.Body.ADF.Value) {
+		cqlIDs, err := cs.client.SearchPagesByCQL(ctx, cql)
+		if err != nil {
+			// Non-fatal: log but continue.
+			fmt.Printf("  [D%d] WARN  %d — contentbylabel CQL search failed: %v\n", depth, pageID, err)
+			continue
+		}
+		page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, cqlIDs...))
+
+		// Build a Related pages list and append to markdown. Use viewpage.action
+		// URLs — the same format the link rewriter resolves to local paths.
+		var relatedBuf strings.Builder
+		relatedBuf.WriteString("\n\n## Related pages\n\n")
+		for _, id := range cqlIDs {
+			title, err := cs.client.GetPageTitleByID(ctx, int(id))
+			if err != nil || title == "" {
+				title = strconv.FormatInt(id, 10)
+			}
+			relatedBuf.WriteString(fmt.Sprintf("- [%s](%s/wiki/pages/viewpage.action?pageId=%d)\n",
+				title, cs.config.BaseURL(), id))
+		}
+		page.Markdown += relatedBuf.String()
 	}
 
 	return &NodeHandlerResult{
@@ -469,24 +508,6 @@ func attachmentSignatureFromData(attachments []confluence.AttachmentData) string
 
 	sort.Strings(parts)
 	return strings.Join(parts, ";")
-}
-
-// resolveTitlesToIDs resolves a list of page titles to numeric page IDs via CQL.
-// Errors for individual titles are logged but don't abort the crawl.
-func (cs *CrawlSession) resolveTitlesToIDs(ctx context.Context, titles []string, spaceKey string) []int64 {
-	var ids []int64
-	for _, title := range titles {
-		pageURL, err := cs.client.ResolvePageURLByTitle(ctx, title, spaceKey)
-		if err != nil {
-			// Non-fatal — leave the title-based link as-is in the markdown
-			continue
-		}
-		id := links.ExtractPageIDFromURL(pageURL)
-		if id > 0 {
-			ids = append(ids, id)
-		}
-	}
-	return ids
 }
 
 func hasLeadingTitleH1(markdown, title string) bool {

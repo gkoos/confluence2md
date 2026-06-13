@@ -60,15 +60,15 @@
 
   <rect x="360" y="180" width="280" height="130" class="important" filter="url(#shadow)" />
   <text x="380" y="212" class="box-title">2) Crawl Session (BFS)</text>
-  <text x="380" y="238" class="box-text">- Fetch page storage XML</text>
+  <text x="380" y="238" class="box-text">- Fetch page ADF JSON</text>
   <text x="380" y="258" class="box-text">- Track visited + depth</text>
   <text x="380" y="278" class="muted">Rate-limited, concurrent workers</text>
 
   <rect x="700" y="180" width="280" height="130" class="process" filter="url(#shadow)" />
   <text x="720" y="212" class="box-title">3) Convert to Markdown</text>
-  <text x="720" y="238" class="box-text">- Parse Confluence storage format</text>
-  <text x="720" y="258" class="box-text">- Render Markdown + normalize</text>
-  <text x="720" y="278" class="muted">Headings, tables, macros, links</text>
+  <text x="720" y="238" class="box-text">- Parse ADF JSON</text>
+  <text x="720" y="258" class="box-text">- Walk node registry, emit Markdown</text>
+  <text x="720" y="278" class="muted">headings, tables, tasks, media, mentions</text>
 
   <rect x="1040" y="180" width="300" height="130" class="process" filter="url(#shadow)" />
   <text x="1060" y="212" class="box-title">4) Comments + Attachments</text>
