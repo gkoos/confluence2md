@@ -19,9 +19,10 @@ func printConfigSummary(cfg *config.Config) {
 	fmt.Printf("  Base URL:    %s\n", cfg.BaseURL())
 	fmt.Printf("  Username:    %s\n", cfg.Confluence.Username)
 	fmt.Printf("  Seeds:       %v\n", cfg.Crawl.Seeds)
-	fmt.Printf("  Max depth:   %d\n", cfg.Crawl.MaxDepth)
-	fmt.Printf("  Concurrency: %d\n", cfg.Crawl.Concurrency)
-	fmt.Printf("  Output dir:  %s\n", cfg.Output.Dir)
+	fmt.Printf("  Max depth:      %d\n", cfg.Crawl.MaxDepth)
+	fmt.Printf("  Concurrency:    %d\n", cfg.Crawl.Concurrency)
+	fmt.Printf("  Follow children: %v\n", cfg.Crawl.FollowChildren)
+	fmt.Printf("  Output dir:     %s\n", cfg.Output.Dir)
 }
 
 func clearDirectoryContents(dir string) error {
