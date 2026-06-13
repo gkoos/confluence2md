@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0](https://github.com/gkoos/confluence2md/compare/v0.5.0...v1.0.0) (2026-06-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* Confluence Data Center/Server is no longer on the roadmap. The converter now uses ADF exclusively, which is a Confluence Cloud-only format.
+
+### Features
+
+* document Confluence Cloud-only support, drop Data Center from roadmap ([#39](https://github.com/gkoos/confluence2md/issues/39)) ([dccc040](https://github.com/gkoos/confluence2md/commit/dccc0407a1ba12088a47fc816204f6bb9705839c))
+
 ## [0.5.0](https://github.com/gkoos/confluence2md/compare/v0.4.4...v0.5.0) (2026-05-30)
 
 
