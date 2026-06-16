@@ -31,12 +31,13 @@ func tableHasSpans(node ADFNode) bool {
 // complexCellTypes are ADF node types that cannot be faithfully represented
 // inside a GFM pipe-table cell and require full HTML output.
 var complexCellTypes = map[string]bool{
-	"heading":     true,
-	"codeBlock":   true,
-	"bulletList":  true,
-	"orderedList": true,
-	"taskList":    true,
-	"table":       true, // nested table
+	"heading":      true,
+	"codeBlock":    true,
+	"bulletList":   true,
+	"orderedList":  true,
+	"taskList":     true,
+	"decisionList": true,
+	"table":        true, // nested table
 }
 
 func tableHasComplexCells(node ADFNode) bool {
@@ -197,6 +198,21 @@ func renderNodeHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 		walkChildren(node, ctx, &inner)
 		buf.WriteString(strings.TrimSpace(inner.String()))
 		buf.WriteString("</code></pre>")
+	case "taskList", "decisionList":
+		buf.WriteString("<ul>")
+		for _, item := range node.Content {
+			state := attrString(item, "state", "")
+			checkbox := "[ ] "
+			if state == "DONE" || state == "DECIDED" {
+				checkbox = "[x] "
+			}
+			buf.WriteString("<li>" + checkbox)
+			var inner strings.Builder
+			renderCellHTML(item, ctx, &inner)
+			buf.WriteString(strings.TrimSpace(inner.String()))
+			buf.WriteString("</li>")
+		}
+		buf.WriteString("</ul>")
 	default:
 		// For inline nodes and anything else, fall back to the markdown registry
 		// (inline text, marks, etc. render fine as markdown inside HTML)
