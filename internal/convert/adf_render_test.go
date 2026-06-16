@@ -120,6 +120,66 @@ func TestADFRender_HTMLTable_Colspan(t *testing.T) {
 	}
 }
 
+func TestADFRender_HTMLTable_TaskList(t *testing.T) {
+	// A table cell containing a taskList must not panic and must produce HTML checkbox items.
+	got, err := ToMarkdown(adf(
+		`{"type":"table","content":[` +
+			`{"type":"tableRow","content":[` +
+			`{"type":"tableCell","content":[` +
+			`{"type":"taskList","content":[` +
+			`{"type":"taskItem","attrs":{"state":"DONE"},"content":[{"type":"paragraph","content":[{"type":"text","text":"done"}]}]},` +
+			`{"type":"taskItem","attrs":{"state":"TODO"},"content":[{"type":"paragraph","content":[{"type":"text","text":"pending"}]}]}` +
+			`]}` +
+			`]}` +
+			`]}` +
+			`]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "<table>") {
+		t.Fatalf("expected HTML table for taskList cell, got:\n%s", got)
+	}
+	if !strings.Contains(got, "<ul>") {
+		t.Fatalf("expected <ul> for taskList, got:\n%s", got)
+	}
+	if !strings.Contains(got, "[x] ") {
+		t.Fatalf("expected checked item, got:\n%s", got)
+	}
+	if !strings.Contains(got, "[ ] ") {
+		t.Fatalf("expected unchecked item, got:\n%s", got)
+	}
+}
+
+func TestADFRender_HTMLTable_DecisionList(t *testing.T) {
+	// A table cell containing a decisionList must not panic and must produce HTML checkbox items.
+	got, err := ToMarkdown(adf(
+		`{"type":"table","content":[` +
+			`{"type":"tableRow","content":[` +
+			`{"type":"tableCell","content":[` +
+			`{"type":"decisionList","content":[` +
+			`{"type":"decisionItem","attrs":{"state":"DECIDED"},"content":[{"type":"paragraph","content":[{"type":"text","text":"approved"}]}]},` +
+			`{"type":"decisionItem","attrs":{"state":"UNDECIDED"},"content":[{"type":"paragraph","content":[{"type":"text","text":"open"}]}]}` +
+			`]}` +
+			`]}` +
+			`]}` +
+			`]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "<table>") {
+		t.Fatalf("expected HTML table for decisionList cell, got:\n%s", got)
+	}
+	if !strings.Contains(got, "<ul>") {
+		t.Fatalf("expected <ul> for decisionList, got:\n%s", got)
+	}
+	if !strings.Contains(got, "[x] ") {
+		t.Fatalf("expected checked item for DECIDED, got:\n%s", got)
+	}
+	if !strings.Contains(got, "[ ] ") {
+		t.Fatalf("expected unchecked item for UNDECIDED, got:\n%s", got)
+	}
+}
+
 func TestADFRender_InlineCard(t *testing.T) {
 	got, err := ToMarkdown(adf(`{"type":"paragraph","content":[{"type":"inlineCard","attrs":{"url":"https://example.com/page"}}]}`))
 	if err != nil {

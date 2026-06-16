@@ -151,7 +151,11 @@ func renderTaskList(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 }
 
 func renderTaskItem(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
-	indent := strings.Repeat("  ", ctx.ListDepth-1)
+	depth := ctx.ListDepth - 1
+	if depth < 0 {
+		depth = 0
+	}
+	indent := strings.Repeat("  ", depth)
 	var prefix string
 	if attrString(node, "state", "") == "DONE" {
 		prefix = "- [x] "
@@ -175,7 +179,11 @@ func renderDecisionList(node ADFNode, ctx *RenderContext, buf *strings.Builder) 
 }
 
 func renderDecisionItem(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
-	indent := strings.Repeat("  ", ctx.ListDepth-1)
+	depth := ctx.ListDepth - 1
+	if depth < 0 {
+		depth = 0
+	}
+	indent := strings.Repeat("  ", depth)
 	var prefix string
 	if attrString(node, "state", "") == "DECIDED" {
 		prefix = "- [x] "
