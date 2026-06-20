@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -20,6 +21,21 @@ func (c *Client) newAuthedRequest(ctx context.Context, method, endpoint string, 
 func readLimitedBody(body io.Reader, limit int64) string {
 	data, _ := io.ReadAll(io.LimitReader(body, limit))
 	return strings.TrimSpace(string(data))
+}
+
+// sameHost reports whether two URLs target the same host (scheme-insensitive,
+// case-insensitive). A parse failure on either side is treated as "not same"
+// so credentials are withheld whenever the destination is uncertain.
+func sameHost(a, b string) bool {
+	ua, err := url.Parse(a)
+	if err != nil {
+		return false
+	}
+	ub, err := url.Parse(b)
+	if err != nil {
+		return false
+	}
+	return ua.Host != "" && strings.EqualFold(ua.Host, ub.Host)
 }
 
 func resolveNextEndpoint(baseURL, next string) string {
