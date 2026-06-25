@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2](https://github.com/gkoos/confluence2md/compare/v1.1.1...v1.1.2) (2026-06-25)
+
+
+### Bug Fixes
+
+* only re-send Basic Auth on same-host attachment redirect ([#49](https://github.com/gkoos/confluence2md/issues/49)) ([c4a0436](https://github.com/gkoos/confluence2md/commit/c4a0436f22863cae443df7c8f8f3411ffbf95eb8))
+
 ## [1.1.1](https://github.com/gkoos/confluence2md/compare/v1.1.0...v1.1.1) (2026-06-16)
 
 
