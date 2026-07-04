@@ -19,29 +19,29 @@ type PageRecord struct {
 	Version             int       `json:"version"`
 	CrawledAt           time.Time `json:"crawled_at"`
 	CommentCount        int       `json:"comment_count,omitempty"`
-	CommentsLastFetched time.Time `json:"comments_last_fetched,omitempty"`
+	CommentsLastFetched time.Time `json:"comments_last_fetched"`
 	CommentsFetchError  string    `json:"comments_fetch_error,omitempty"`
 	SourceURL           string    `json:"source_url"`
 	CanonicalURL        string    `json:"canonical_url"`
 	SpaceKey            string    `json:"space_key"`
 	Depth               int       `json:"depth"`
-	FetchError          string    `json:"fetch_error,omitempty"`          // non-empty if fetch/convert failed
-	OutgoingLinks       []string  `json:"outgoing_links"`                 // page IDs this page links to
-	IncomingLinks       []string  `json:"incoming_links"`                 // page IDs that link to this page
-	Attachments         []string  `json:"attachments,omitempty"`          // saved filenames in attachments/
-	AttachmentSignature string    `json:"attachment_signature,omitempty"` // stable attachment metadata signature for dirty checks
+	FetchError          string    `json:"fetch_error,omitempty"`           // non-empty if fetch/convert failed
+	OutgoingLinks       []string  `json:"outgoing_links"`                  // page IDs this page links to
+	IncomingLinks       []string  `json:"incoming_links"`                  // page IDs that link to this page
+	Attachments         []string  `json:"attachments,omitempty"`           // saved filenames in attachments/
+	AttachmentSignature string    `json:"attachment_signature,omitempty"`  // stable attachment metadata signature for dirty checks
 	StorageFormat       string    `json:"storage_format_sample,omitempty"` // First 500 chars for diagnostic
-	
+
 	// Temporal metadata
-	CreatedAt       time.Time `json:"created_at"`
-	LastModifiedAt  time.Time `json:"last_modified_at"`
-	
+	CreatedAt      time.Time `json:"created_at"`
+	LastModifiedAt time.Time `json:"last_modified_at"`
+
 	// Author metadata
 	CreatedByID        string `json:"created_by_id"`
 	CreatedByName      string `json:"created_by_name,omitempty"`
 	LastModifiedByID   string `json:"last_modified_by_id"`
 	LastModifiedByName string `json:"last_modified_by_name,omitempty"`
-	
+
 	// Hierarchy metadata
 	ConfluenceParentID *int64 `json:"confluence_parent_id,omitempty"`
 }
@@ -49,11 +49,11 @@ type PageRecord struct {
 // Metadata represents the top-level metadata.json structure.
 type Metadata struct {
 	CrawlStartedAt                 time.Time             `json:"crawl_started_at"`
-	LastCompletedCrawlStartedAt    time.Time             `json:"last_completed_crawl_started_at,omitempty"`
-	LastCompletedCrawlCompletedAt  time.Time             `json:"last_completed_crawl_completed_at,omitempty"`
+	LastCompletedCrawlStartedAt    time.Time             `json:"last_completed_crawl_started_at"`
+	LastCompletedCrawlCompletedAt  time.Time             `json:"last_completed_crawl_completed_at"`
 	LastCompletedCrawlMode         string                `json:"last_completed_crawl_mode,omitempty"`
-	LastSuccessfulCrawlStartedAt   time.Time             `json:"last_successful_crawl_started_at,omitempty"`
-	LastSuccessfulCrawlCompletedAt time.Time             `json:"last_successful_crawl_completed_at,omitempty"`
+	LastSuccessfulCrawlStartedAt   time.Time             `json:"last_successful_crawl_started_at"`
+	LastSuccessfulCrawlCompletedAt time.Time             `json:"last_successful_crawl_completed_at"`
 	LastSuccessfulCrawlMode        string                `json:"last_successful_crawl_mode,omitempty"`
 	SeedPageIDs                    []string              `json:"seed_page_ids,omitempty"`
 	Pages                          map[string]PageRecord `json:"pages"`

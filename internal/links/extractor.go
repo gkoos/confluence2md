@@ -154,9 +154,9 @@ func HasChildrenMacro(adfJSON string) bool {
 
 // adfNode is a minimal ADF node used only for CQL extraction.
 type adfNode struct {
-	Type    string                 `json:"type"`
-	Attrs   map[string]interface{} `json:"attrs"`
-	Content []adfNode              `json:"content"`
+	Type    string         `json:"type"`
+	Attrs   map[string]any `json:"attrs"`
+	Content []adfNode      `json:"content"`
 }
 
 // ExtractContentByLabelCQLs returns the CQL query strings from all
@@ -194,16 +194,16 @@ func ExtractContentByLabelCQLs(adfJSON string) []string {
 // cqlFromMacroParams drills into the nested ADF macro params structure:
 //
 //	attrs.parameters.macroParams.cql.value
-func cqlFromMacroParams(attrs map[string]interface{}) string {
-	params, _ := attrs["parameters"].(map[string]interface{})
+func cqlFromMacroParams(attrs map[string]any) string {
+	params, _ := attrs["parameters"].(map[string]any)
 	if params == nil {
 		return ""
 	}
-	macroParams, _ := params["macroParams"].(map[string]interface{})
+	macroParams, _ := params["macroParams"].(map[string]any)
 	if macroParams == nil {
 		return ""
 	}
-	cqlEntry, _ := macroParams["cql"].(map[string]interface{})
+	cqlEntry, _ := macroParams["cql"].(map[string]any)
 	if cqlEntry == nil {
 		return ""
 	}

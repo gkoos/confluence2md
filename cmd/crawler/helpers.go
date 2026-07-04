@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,9 +13,7 @@ import (
 
 func snapshotPageRecords(src map[string]store.PageRecord) map[string]store.PageRecord {
 	out := make(map[string]store.PageRecord, len(src))
-	for k, v := range src {
-		out[k] = v
-	}
+	maps.Copy(out, src)
 	return out
 }
 

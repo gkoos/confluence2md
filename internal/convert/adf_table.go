@@ -1,6 +1,7 @@
 package convert
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -42,10 +43,8 @@ var complexCellTypes = map[string]bool{
 
 func tableHasComplexCells(node ADFNode) bool {
 	for _, row := range node.Content {
-		for _, cell := range row.Content {
-			if cellHasComplexContent(cell) {
-				return true
-			}
+		if slices.ContainsFunc(row.Content, cellHasComplexContent) {
+			return true
 		}
 	}
 	return false
@@ -158,13 +157,7 @@ func renderCellHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 func renderNodeHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 	switch node.Type {
 	case "heading":
-		lvl := attrInt(node, "level", 1)
-		if lvl < 1 {
-			lvl = 1
-		}
-		if lvl > 6 {
-			lvl = 6
-		}
+		lvl := min(max(attrInt(node, "level", 1), 1), 6)
 		tag := "h" + itoa(lvl)
 		buf.WriteString("<" + tag + ">")
 		var inner strings.Builder

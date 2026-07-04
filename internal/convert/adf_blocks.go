@@ -73,13 +73,7 @@ func renderParagraph(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 }
 
 func renderHeading(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
-	level := attrInt(node, "level", 1)
-	if level < 1 {
-		level = 1
-	}
-	if level > 6 {
-		level = 6
-	}
+	level := min(max(attrInt(node, "level", 1), 1), 6)
 	ensureBlankLine(buf)
 	buf.WriteString(strings.Repeat("#", level))
 	buf.WriteString(" ")
@@ -151,10 +145,7 @@ func renderTaskList(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 }
 
 func renderTaskItem(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
-	depth := ctx.ListDepth - 1
-	if depth < 0 {
-		depth = 0
-	}
+	depth := max(ctx.ListDepth-1, 0)
 	indent := strings.Repeat("  ", depth)
 	var prefix string
 	if attrString(node, "state", "") == "DONE" {
@@ -179,10 +170,7 @@ func renderDecisionList(node ADFNode, ctx *RenderContext, buf *strings.Builder) 
 }
 
 func renderDecisionItem(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
-	depth := ctx.ListDepth - 1
-	if depth < 0 {
-		depth = 0
-	}
+	depth := max(ctx.ListDepth-1, 0)
 	indent := strings.Repeat("  ", depth)
 	var prefix string
 	if attrString(node, "state", "") == "DECIDED" {
@@ -217,7 +205,7 @@ func renderBlockquote(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 	var inner strings.Builder
 	walkChildren(node, ctx, &inner)
 	text := strings.TrimRight(inner.String(), "\n")
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		buf.WriteString("> " + line + "\n")
 	}
 	buf.WriteString("\n")
