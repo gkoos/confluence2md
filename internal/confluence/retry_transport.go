@@ -127,10 +127,7 @@ func retryDelay(resp *http.Response, attempt, initialBackoffMS int) time.Duratio
 	}
 
 	base := time.Duration(initialBackoffMS) * time.Millisecond
-	shift := attempt - 1
-	if shift > 10 {
-		shift = 10
-	}
+	shift := min(attempt-1, 10)
 	delay := base * time.Duration(1<<shift)
 
 	// Add bounded jitter (+/-10%) to reduce synchronized retries.

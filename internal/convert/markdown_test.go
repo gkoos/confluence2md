@@ -94,7 +94,6 @@ func TestToMarkdown_GoldenFixtures(t *testing.T) {
 	}
 
 	for _, inputPath := range fixtures {
-		inputPath := inputPath
 		name := strings.TrimSuffix(filepath.Base(inputPath), ".input.json")
 
 		t.Run(name, func(t *testing.T) {
