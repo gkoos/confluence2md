@@ -46,8 +46,8 @@ type runMetrics struct {
 }
 
 type runFinalizeResult struct {
-	rewriteStats      links.RewriteStats
-	reconcileStats    artifactReconcileStats
+	rewriteStats       links.RewriteStats
+	reconcileStats     artifactReconcileStats
 	checkpointAdvanced bool
 }
 
@@ -306,8 +306,8 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 	return nil
 }
 
-func logPageWithLevel(level string, pageID int64, messageFormat string, args ...interface{}) {
-	params := append([]interface{}{level, pageID}, args...)
+func logPageWithLevel(level string, pageID int64, messageFormat string, args ...any) {
+	params := append([]any{level, pageID}, args...)
 	fmt.Printf("  [%s] Page %d: "+messageFormat+"\n", params...)
 }
 

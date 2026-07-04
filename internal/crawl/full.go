@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gkoos/confluence2md/internal/confluence"
 	"github.com/gkoos/confluence2md/internal/config"
+	"github.com/gkoos/confluence2md/internal/confluence"
 	"github.com/gkoos/confluence2md/internal/convert"
 	"github.com/gkoos/confluence2md/internal/links"
 	"github.com/gkoos/confluence2md/internal/store"
@@ -18,23 +18,23 @@ import (
 
 // CrawledPage represents a page after conversion and link extraction
 type CrawledPage struct {
-	ID             int64
-	Title          string
-	Markdown       string
-	Reused         bool
-	Comments       []confluence.CommentData
-	CommentCount   int
-	CommentFetchError string
-	RawADF         string    // raw Confluence ADF JSON body
-	CanonicalURL   string
-	SpaceKey       string
-	OutgoingLinks  []int64   // page IDs of all linked pages
+	ID                   int64
+	Title                string
+	Markdown             string
+	Reused               bool
+	Comments             []confluence.CommentData
+	CommentCount         int
+	CommentFetchError    string
+	RawADF               string // raw Confluence ADF JSON body
+	CanonicalURL         string
+	SpaceKey             string
+	OutgoingLinks        []int64 // page IDs of all linked pages
 	ExternalLinksSkipped int
-	Version        int
-	SourceURL      string
-	CrawledAt      time.Time
-	Depth          int
-	FetchError     string // non-empty if fetch/convert failed
+	Version              int
+	SourceURL            string
+	CrawledAt            time.Time
+	Depth                int
+	FetchError           string // non-empty if fetch/convert failed
 
 	Attachments          []confluence.AttachmentData
 	AttachmentSignature  string
@@ -85,19 +85,19 @@ type CrawlSession struct {
 	previousPages map[string]store.PageRecord
 
 	// BFS state
-	queue        chan queueItem
-	visited      map[int64]bool
-	results      map[int64]*CrawledPage
-	mu            sync.RWMutex
+	queue   chan queueItem
+	visited map[int64]bool
+	results map[int64]*CrawledPage
+	mu      sync.RWMutex
 
 	// Concurrency control
-	semaphore    chan struct{}
-	
+	semaphore chan struct{}
+
 	// Work tracking
-	pendingWork  sync.WaitGroup
+	pendingWork sync.WaitGroup
 
 	// Tracking
-	totalFetched       int
+	totalFetched      int
 	enqueueDrops      int
 	enqueueDropSample []queueDropSample
 }
@@ -116,10 +116,10 @@ func NewCrawlSession(client *confluence.Client, cfg *config.Config, seedSpaceKey
 		concurrency:  cfg.Crawl.Concurrency,
 		seedSpaceKey: seedSpaceKey,
 
-		queue:       make(chan queueItem, cfg.Crawl.QueueSize),
-		visited:     make(map[int64]bool),
-		results:     make(map[int64]*CrawledPage),
-		semaphore:   make(chan struct{}),
+		queue:     make(chan queueItem, cfg.Crawl.QueueSize),
+		visited:   make(map[int64]bool),
+		results:   make(map[int64]*CrawledPage),
+		semaphore: make(chan struct{}),
 	}
 
 	// Default to full mode behavior; updates mode can override this callback.
@@ -561,7 +561,7 @@ func (cs *CrawlSession) enqueueChildren(parentDepth int, childPageIDs []int64) {
 }
 
 // Stats returns crawl statistics
-func (cs *CrawlSession) Stats() map[string]interface{} {
+func (cs *CrawlSession) Stats() map[string]any {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
@@ -578,13 +578,13 @@ func (cs *CrawlSession) Stats() map[string]interface{} {
 		externalSkipped += page.ExternalLinksSkipped
 	}
 
-	return map[string]interface{}{
-		"total_pages":              len(cs.results),
-		"total_links":              linkCount,
-		"unique_internal_targets":  len(uniqueInternalTargets),
-		"external_links_skipped":   externalSkipped,
-		"queue_drops":              cs.enqueueDrops,
-		"queue_drop_sample_count":  len(cs.enqueueDropSample),
-		"depth_distribution":       depthDist,
+	return map[string]any{
+		"total_pages":             len(cs.results),
+		"total_links":             linkCount,
+		"unique_internal_targets": len(uniqueInternalTargets),
+		"external_links_skipped":  externalSkipped,
+		"queue_drops":             cs.enqueueDrops,
+		"queue_drop_sample_count": len(cs.enqueueDropSample),
+		"depth_distribution":      depthDist,
 	}
 }
