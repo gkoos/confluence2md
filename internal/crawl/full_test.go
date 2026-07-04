@@ -20,6 +20,25 @@ func TestSetNodeHandlerRejectsNil(t *testing.T) {
 	}
 }
 
+func TestSetDryRun(t *testing.T) {
+	cfg := &config.Config{Crawl: config.CrawlConfig{MaxDepth: 1, Concurrency: 1, RateLimitRPM: 60000, QueueSize: 10000}}
+	cs := NewCrawlSession(nil, cfg, "")
+
+	if cs.dryRun {
+		t.Fatalf("expected dryRun to default to false")
+	}
+
+	cs.SetDryRun(true)
+	if !cs.dryRun {
+		t.Fatalf("expected dryRun to be true after SetDryRun(true)")
+	}
+
+	cs.SetDryRun(false)
+	if cs.dryRun {
+		t.Fatalf("expected dryRun to be false after SetDryRun(false)")
+	}
+}
+
 func TestRunUsesSharedTraversalWithCustomNodeHandler(t *testing.T) {
 	cfg := &config.Config{
 		Crawl: config.CrawlConfig{

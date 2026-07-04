@@ -7,8 +7,29 @@ This guide covers practical runtime behavior, failure modes, and recovery steps.
 - Full mode crawls from configured seeds up to max depth.
 - Full mode clears the configured output directory before writing new crawl output.
 - Updates mode (v1.0 scope) uses the same seed-based traversal as full mode, then selectively re-processes dirty pages and reuses clean-page artifacts.
+- Dry-run mode (`--dry-run`) preserves traversal and decision logic but suppresses write side effects.
 - Output commit behavior is currently direct-write (non-transactional): files are written directly under the configured output directory during the run.
 - Page export is resilient: non-critical failures (for example comment fetch or attachment retrieval failures) should not block page Markdown output.
+
+### Dry-run behavior
+
+Dry-run is a modifier on `full` and `updates` modes.
+
+- Keeps traversal, link discovery, and updates dirty/clean decisions active.
+- Reuses the same scope-discovery inputs: ADF links, comment-body links, children expansion, and contentbylabel CQL expansion.
+- Skips markdown artifact generation/writes and all other output mutations.
+
+Suppressed side effects in dry-run:
+
+- no output directory clear
+- no page markdown writes
+- no attachment file writes
+- no metadata.json write
+- no index.md write
+- no stale artifact deletions
+- no checkpoint updates
+
+Summary output in dry-run presents predicted outcomes (for example would-be added/updated/deleted managed files).
 
 ## Common failure scenarios
 
@@ -204,8 +225,20 @@ Full crawl:
 confluence2md --mode full
 ```
 
+Full dry-run preview:
+
+```sh
+confluence2md --mode full --dry-run
+```
+
 Incremental refresh:
 
 ```sh
 confluence2md --mode updates
+```
+
+Updates dry-run preview:
+
+```sh
+confluence2md --mode updates --dry-run
 ```

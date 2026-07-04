@@ -78,6 +78,7 @@ type CrawlNodeHandler func(ctx context.Context, pageID int64, depth int) *NodeHa
 type CrawlSession struct {
 	client        *confluence.Client
 	config        *config.Config
+	dryRun        bool
 	maxDepth      int
 	concurrency   int
 	seedSpaceKey  string // resolved alpha space key for title lookups
@@ -135,6 +136,11 @@ func (cs *CrawlSession) SetNodeHandler(handler CrawlNodeHandler) error {
 	}
 	cs.nodeHandler = handler
 	return nil
+}
+
+// SetDryRun enables or disables dry-run traversal behavior.
+func (cs *CrawlSession) SetDryRun(dryRun bool) {
+	cs.dryRun = dryRun
 }
 
 // EnableUpdatesMode switches traversal to updates-mode node handling.
@@ -302,20 +308,6 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 		}
 	}
 
-	// Convert to Markdown
-	markdown, err := convert.ToMarkdown(fetchedPage.Body.ADF.Value)
-	if err != nil {
-		page.FetchError = fmt.Sprintf("convert failed: %v", err)
-		return &NodeHandlerResult{Page: page, FetchError: page.FetchError, Title: page.Title}
-	}
-
-	// Prepend page title as H1 only when it is not already present.
-	if !hasLeadingTitleH1(markdown, page.Title) {
-		markdown = fmt.Sprintf("# %s\n\n%s", page.Title, markdown)
-	}
-
-	page.Markdown = markdown
-
 	// Fetch page comments (best-effort). Failure is non-fatal for page export.
 	comments, err := cs.client.GetPageComments(ctx, pageID)
 	if err != nil {
@@ -360,10 +352,11 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	}
 
 	// If the page contains a "contentbylabel" macro, the listed pages are not
-	// represented as inline links in ADF — execute the embedded CQL query,
-	// add matching page IDs to the outgoing link set, and append a "Related
-	// pages" section to the rendered markdown so the link rewriter can later
-	// convert these Confluence URLs into local relative paths.
+	// represented as inline links in ADF — execute the embedded CQL query and
+	// add matching page IDs to the outgoing link set.
+	//
+	// In non-dry-run mode we also append a "Related pages" section to rendered
+	// markdown so link rewriting can convert these URLs to local relative paths.
 	for _, cql := range links.ExtractContentByLabelCQLs(fetchedPage.Body.ADF.Value) {
 		cqlIDs, err := cs.client.SearchPagesByCQL(ctx, cql)
 		if err != nil {
@@ -372,6 +365,10 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 			continue
 		}
 		page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, cqlIDs...))
+
+		if cs.dryRun {
+			continue
+		}
 
 		// Build a Related pages list and append to markdown. Use viewpage.action
 		// URLs — the same format the link rewriter resolves to local paths.
@@ -386,6 +383,22 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 				title, cs.config.BaseURL(), id)
 		}
 		page.Markdown += relatedBuf.String()
+	}
+
+	if !cs.dryRun {
+		// Convert to Markdown only when a real run needs rendered output.
+		markdown, err := convert.ToMarkdown(fetchedPage.Body.ADF.Value)
+		if err != nil {
+			page.FetchError = fmt.Sprintf("convert failed: %v", err)
+			return &NodeHandlerResult{Page: page, FetchError: page.FetchError, Title: page.Title}
+		}
+
+		// Prepend page title as H1 only when it is not already present.
+		if !hasLeadingTitleH1(markdown, page.Title) {
+			markdown = fmt.Sprintf("# %s\n\n%s", page.Title, markdown)
+		}
+
+		page.Markdown = markdown + page.Markdown
 	}
 
 	return &NodeHandlerResult{

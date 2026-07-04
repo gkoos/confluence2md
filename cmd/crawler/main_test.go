@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gkoos/confluence2md/internal/config"
+	"github.com/gkoos/confluence2md/internal/confluence"
 	"github.com/gkoos/confluence2md/internal/crawl"
 	"github.com/gkoos/confluence2md/internal/store"
 )
@@ -362,6 +364,67 @@ func TestFinalizeRun_ZeroErrorsAdvanceCompletedAndSuccessful(t *testing.T) {
 	}
 }
 
+func TestFinalizeRun_DryRunSkipsWritesAndCheckpoints(t *testing.T) {
+	outDir := t.TempDir()
+	w, err := store.NewWriter(outDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+
+	oldStart := time.Now().UTC().Add(-2 * time.Hour)
+	oldEnd := oldStart.Add(1 * time.Minute)
+	if err := w.MarkSuccessfulCheckpoint("full", oldStart, oldEnd); err != nil {
+		t.Fatalf("MarkSuccessfulCheckpoint returned error: %v", err)
+	}
+
+	rc := &runContext{
+		mode:               "updates",
+		dryRun:             true,
+		cfg:                &config.Config{Output: config.OutputConfig{Dir: outDir}},
+		writer:             w,
+		crawlResults:       map[int64]*crawl.CrawledPage{},
+		previousCheckpoint: w.LastSuccessfulCheckpoint(),
+		previousPages: map[string]store.PageRecord{
+			"123": {ID: "123", LocalPath: "page_123.md"},
+		},
+	}
+	metrics := &runMetrics{errorCount: 0}
+
+	result, err := finalizeRun(rc, metrics)
+	if err != nil {
+		t.Fatalf("finalizeRun returned error: %v", err)
+	}
+	if result.checkpointAdvanced {
+		t.Fatalf("expected dry-run not to advance successful checkpoint")
+	}
+	if result.reconcileStats.Deleted != 1 {
+		t.Fatalf("expected dry-run to preview 1 stale artifact delete, got %d", result.reconcileStats.Deleted)
+	}
+
+	completed := w.LastCompletedCheckpoint()
+	if completed.Present {
+		t.Fatalf("expected dry-run not to write completed checkpoint")
+	}
+
+	successful := w.LastSuccessfulCheckpoint()
+	if !successful.Present {
+		t.Fatalf("expected successful checkpoint to remain present")
+	}
+	if successful.Mode != "full" {
+		t.Fatalf("expected successful checkpoint mode to remain full, got %q", successful.Mode)
+	}
+	if !successful.StartedAt.Equal(oldStart) || !successful.CompletedAt.Equal(oldEnd) {
+		t.Fatalf("expected successful checkpoint tuple unchanged")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(outDir, "index.md")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected dry-run not to generate index.md, stat err=%v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(outDir, "metadata.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected dry-run not to save metadata.json, stat err=%v", statErr)
+	}
+}
+
 func TestWriteStartIndex_IncludesSummaryAndSeedLinks(t *testing.T) {
 	outDir := t.TempDir()
 	w, err := store.NewWriter(outDir)
@@ -414,5 +477,143 @@ func TestWriteStartIndex_IncludesSummaryAndSeedLinks(t *testing.T) {
 		if !strings.Contains(index, want) {
 			t.Fatalf("expected index to contain %q, got:\n%s", want, index)
 		}
+	}
+}
+
+func TestRootCommand_HasDryRunFlagWithDefaultFalse(t *testing.T) {
+	flag := rootCmd.Flags().Lookup("dry-run")
+	if flag == nil {
+		t.Fatalf("expected dry-run flag to be registered")
+	}
+
+	if flag.DefValue != "false" {
+		t.Fatalf("expected dry-run default to be false, got %q", flag.DefValue)
+	}
+}
+
+func TestProcessReusedPage_DryRunSkipsArtifactMaterialization(t *testing.T) {
+	outDir := t.TempDir()
+	w, err := store.NewWriter(outDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+	w.SetSeedPageIDs([]string{"123"})
+
+	previous := store.PageRecord{
+		ID:            "123",
+		Title:         "Decision Records",
+		LocalPath:     "decision-records_123.md",
+		OutgoingLinks: []string{"555"},
+	}
+	previousPages := map[string]store.PageRecord{"123": previous}
+
+	rc := &runContext{
+		dryRun:              true,
+		cfg:                 &config.Config{Output: config.OutputConfig{Dir: outDir}},
+		writer:              w,
+		previousPages:       previousPages,
+		oldManagedArtifacts: managedArtifactSet(previousPages),
+	}
+	metrics := &runMetrics{}
+	crawledPage := &crawl.CrawledPage{
+		ID:           123,
+		Title:        "Decision Records",
+		Depth:        1,
+		OutgoingLinks: []int64{555},
+	}
+
+	if err := processReusedPage(rc, metrics, 123, crawledPage); err != nil {
+		t.Fatalf("processReusedPage returned error: %v", err)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(outDir, previous.LocalPath)); !os.IsNotExist(statErr) {
+		t.Fatalf("expected dry-run to skip reused-page artifact write, stat err=%v", statErr)
+	}
+	if got := metrics.fileAddedCount; got != 1 {
+		t.Fatalf("expected dry-run to predict one added reused artifact, got %d", got)
+	}
+	if got := metrics.reusedCount; got != 1 {
+		t.Fatalf("expected reused count 1, got %d", got)
+	}
+	if got := metrics.successCount; got != 1 {
+		t.Fatalf("expected success count 1, got %d", got)
+	}
+}
+
+func TestProcessRerenderedPage_DryRunSkipsPageAndAttachmentWrites(t *testing.T) {
+	outDir := t.TempDir()
+	w, err := store.NewWriter(outDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+
+	rc := &runContext{
+		dryRun: true,
+		cfg: &config.Config{
+			Confluence: config.ConfluenceConfig{Username: "user", Token: "token"},
+			Crawl:      config.CrawlConfig{Seeds: []string{"https://example.atlassian.net/wiki/spaces/SPACE/pages/123/Title"}},
+			Output:     config.OutputConfig{Dir: outDir},
+			Attachments: config.AttachmentsConfig{
+				Download:  true,
+				MaxSizeMB: 10,
+			},
+			Retry: config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1000},
+		},
+		writer:              w,
+		oldManagedArtifacts: map[string]struct{}{},
+	}
+	metrics := &runMetrics{}
+	crawledPage := &crawl.CrawledPage{
+		ID:               123,
+		Title:            "Rendering Candidate",
+		Version:          2,
+		SourceURL:        "https://example.atlassian.net/wiki/pages/viewpage.action?pageId=123",
+		CanonicalURL:     "https://example.atlassian.net/wiki/pages/viewpage.action?pageId=123",
+		SpaceKey:         "SPACE",
+		Depth:            0,
+		CrawledAt:        time.Now().UTC(),
+		OutgoingLinks:    []int64{456},
+		CommentCount:     1,
+		Comments:         []confluence.CommentData{{ID: "c1", Body: "{\"type\":\"doc\",\"content\":[]}"}},
+		Attachments:      []confluence.AttachmentData{{ID: "a1", Filename: "diagram.png", FileID: "fid-1", FileSizeBytes: 1024}},
+		CreatedByID:      "u1",
+		LastModifiedByID: "u2",
+	}
+
+	if err := processRerenderedPage(context.Background(), rc, metrics, 123, crawledPage); err != nil {
+		t.Fatalf("processRerenderedPage returned error: %v", err)
+	}
+
+	entries, readErr := os.ReadDir(outDir)
+	if readErr != nil {
+		t.Fatalf("ReadDir returned error: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected dry-run to avoid filesystem writes, found %d entries", len(entries))
+	}
+
+	if got := metrics.successCount; got != 1 {
+		t.Fatalf("expected success count 1, got %d", got)
+	}
+	if got := metrics.rerenderedCount; got != 1 {
+		t.Fatalf("expected rerendered count 1, got %d", got)
+	}
+	if got := metrics.attachmentsDownloaded; got != 1 {
+		t.Fatalf("expected one predicted attachment download, got %d", got)
+	}
+	if got := metrics.fileAddedCount; got != 2 {
+		t.Fatalf("expected predicted added files count 2 (page + attachment), got %d", got)
+	}
+}
+
+func TestShouldPrepareOutputDirectory(t *testing.T) {
+	if !shouldPrepareOutputDirectory("full", false) {
+		t.Fatalf("expected full non-dry-run to prepare output directory")
+	}
+	if shouldPrepareOutputDirectory("full", true) {
+		t.Fatalf("expected full dry-run not to prepare output directory")
+	}
+	if shouldPrepareOutputDirectory("updates", false) {
+		t.Fatalf("expected updates mode not to prepare output directory")
 	}
 }
