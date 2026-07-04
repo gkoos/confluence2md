@@ -166,6 +166,21 @@ func reconcileManagedArtifacts(outputDir string, oldPages, newPages map[string]s
 	return stats, nil
 }
 
+func previewManagedArtifactReconcile(oldPages, newPages map[string]store.PageRecord) artifactReconcileStats {
+	stats := artifactReconcileStats{}
+	oldSet := managedArtifactSet(oldPages)
+	newSet := managedArtifactSet(newPages)
+
+	for relPath := range oldSet {
+		if _, keep := newSet[relPath]; keep {
+			continue
+		}
+		stats.Deleted++
+	}
+
+	return stats
+}
+
 func managedArtifactSet(pages map[string]store.PageRecord) map[string]struct{} {
 	artifacts := make(map[string]struct{})
 	for _, record := range pages {

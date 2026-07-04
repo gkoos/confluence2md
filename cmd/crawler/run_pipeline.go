@@ -19,6 +19,7 @@ import (
 
 type runContext struct {
 	mode                string
+	dryRun              bool
 	cfg                 *config.Config
 	client              *confluenceclient.Client
 	writer              *store.Writer
@@ -51,7 +52,7 @@ type runFinalizeResult struct {
 	checkpointAdvanced bool
 }
 
-func bootstrapRun(mode, cfgFile string) (*runContext, error) {
+func bootstrapRun(mode, cfgFile string, dryRun bool) (*runContext, error) {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return nil, fmt.Errorf("config error: %w", err)
@@ -72,7 +73,7 @@ func bootstrapRun(mode, cfgFile string) (*runContext, error) {
 		return nil, err
 	}
 
-	if mode == "full" {
+	if shouldPrepareOutputDirectory(mode, dryRun) {
 		if err := clearDirectoryContents(cfg.Output.Dir); err != nil {
 			return nil, fmt.Errorf("prepare output directory for full crawl: %w", err)
 		}
@@ -86,6 +87,7 @@ func bootstrapRun(mode, cfgFile string) (*runContext, error) {
 	previousPages := snapshotPageRecords(writer.GetPages())
 	rc := &runContext{
 		mode:                mode,
+		dryRun:              dryRun,
 		cfg:                 cfg,
 		client:              client,
 		writer:              writer,
@@ -112,11 +114,16 @@ func bootstrapRun(mode, cfgFile string) (*runContext, error) {
 	}
 
 	rc.crawler = crawl.NewCrawlSession(client, cfg, rc.spaceKey)
+	rc.crawler.SetDryRun(dryRun)
 	if rc.mode == "updates" {
 		rc.crawler.EnableUpdatesMode(rc.previousPages)
 	}
 
 	return rc, nil
+}
+
+func shouldPrepareOutputDirectory(mode string, dryRun bool) bool {
+	return mode == "full" && !dryRun
 }
 
 func executeTraversal(ctx context.Context, rc *runContext) error {
@@ -126,7 +133,11 @@ func executeTraversal(ctx context.Context, rc *runContext) error {
 	}
 	rc.crawlResults = crawlResults
 
-	fmt.Printf("\nProcessing and writing %d crawled pages...\n", len(crawlResults))
+	if rc.dryRun {
+		fmt.Printf("\nProcessing %d crawled pages (dry-run, no writes)...\n", len(crawlResults))
+	} else {
+		fmt.Printf("\nProcessing and writing %d crawled pages...\n", len(crawlResults))
+	}
 	return nil
 }
 
@@ -155,15 +166,20 @@ func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawle
 		logPageWithLevel("ERR", pageID, "reused page missing from previous metadata")
 		return fmt.Errorf("reused page missing from previous metadata")
 	}
-	materializedMarkdown := store.ComposeMarkdownWithFrontMatter(pageIDStr, previous, rc.writer.GetSeedPageIDs(), crawledPage.Markdown)
-
-	materialized, materializeErr := ensureLocalPageArtifact(rc.cfg.Output.Dir, previous, materializedMarkdown)
-	if materializeErr != nil {
-		logPageWithLevel("ERR", pageID, "reused page artifact check failed: %v", materializeErr)
-		return materializeErr
-	}
-	if materialized {
-		metrics.fileAddedCount++
+	if rc.dryRun {
+		if reusedPageArtifactMissing(rc.cfg.Output.Dir, previous) {
+			metrics.fileAddedCount++
+		}
+	} else {
+		materializedMarkdown := store.ComposeMarkdownWithFrontMatter(pageIDStr, previous, rc.writer.GetSeedPageIDs(), crawledPage.Markdown)
+		materialized, materializeErr := ensureLocalPageArtifact(rc.cfg.Output.Dir, previous, materializedMarkdown)
+		if materializeErr != nil {
+			logPageWithLevel("ERR", pageID, "reused page artifact check failed: %v", materializeErr)
+			return materializeErr
+		}
+		if materialized {
+			metrics.fileAddedCount++
+		}
 	}
 
 	record := previous
@@ -175,7 +191,11 @@ func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawle
 	}
 
 	rc.writer.AddPageMetadata(pageIDStr, record)
-	logPageWithLevel("OK", pageID, "%s (reused)", record.Title)
+	if rc.dryRun {
+		logPageWithLevel("OK", pageID, "%s (reused, dry-run)", record.Title)
+	} else {
+		logPageWithLevel("OK", pageID, "%s (reused)", record.Title)
+	}
 	metrics.successCount++
 	metrics.reusedCount++
 	for _, filename := range record.Attachments {
@@ -200,16 +220,18 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 	pageIDStr := strconv.FormatInt(pageID, 10)
 	markdown := crawledPage.Markdown
 
-	var err error
-	markdown, err = absolutizeConfluenceLinks(markdown, rc.cfg.BaseURL())
-	if err != nil {
-		logPageWithLevel("ERR", pageID, "absolutize links failed: %v", err)
-		return err
-	}
+	if !rc.dryRun {
+		var err error
+		markdown, err = absolutizeConfluenceLinks(markdown, rc.cfg.BaseURL())
+		if err != nil {
+			logPageWithLevel("ERR", pageID, "absolutize links failed: %v", err)
+			return err
+		}
 
-	markdown, err = enrichURLOnlyLinkLabels(markdown, rc.client)
-	if err != nil {
-		logPageWithLevel("WARN", pageID, "enrich links failed: %v", err)
+		markdown, err = enrichURLOnlyLinkLabels(markdown, rc.client)
+		if err != nil {
+			logPageWithLevel("WARN", pageID, "enrich links failed: %v", err)
+		}
 	}
 
 	if crawledPage.CommentFetchError != "" {
@@ -222,7 +244,12 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		if crawledPage.AttachmentFetchError != "" {
 			logPageWithLevel("WARN", pageID, "%s", crawledPage.AttachmentFetchError)
 		}
-		results := store.DownloadPageAttachments(ctx, rc.cfg.Output.Dir, pageIDStr, crawledPage.Attachments, rc.cfg.Attachments.MaxSizeMB, rc.client)
+		var results []store.AttachmentResult
+		if rc.dryRun {
+			results = previewPageAttachments(pageIDStr, crawledPage.Attachments, rc.cfg.Attachments.MaxSizeMB)
+		} else {
+			results = store.DownloadPageAttachments(ctx, rc.cfg.Output.Dir, pageIDStr, crawledPage.Attachments, rc.cfg.Attachments.MaxSizeMB, rc.client)
+		}
 		for _, r := range results {
 			if r.Error != nil {
 				logPageAttachmentWarning(pageID, r.Error)
@@ -237,14 +264,21 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 				}
 			}
 		}
-		markdown = rewriteAttachmentLinks(markdown, results)
+		if !rc.dryRun {
+			markdown = rewriteAttachmentLinks(markdown, results)
+		}
 	}
 
-	commentsMD := convert.CommentsToMarkdown(crawledPage.Comments)
-	if commentsMD != "" {
-		markdown = strings.TrimRight(markdown, "\n") + "\n\n" + commentsMD + "\n"
+	if crawledPage.CommentCount > 0 {
 		metrics.pagesWithComments++
 		metrics.totalCommentsFetched += crawledPage.CommentCount
+	}
+
+	if !rc.dryRun {
+		commentsMD := convert.CommentsToMarkdown(crawledPage.Comments)
+		if commentsMD != "" {
+			markdown = strings.TrimRight(markdown, "\n") + "\n\n" + commentsMD + "\n"
+		}
 	}
 
 	record := store.PageRecord{
@@ -285,9 +319,13 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		record.ConfluenceParentID = crawledPage.ParentID
 	}
 
-	if err := rc.writer.AddPage(pageIDStr, record); err != nil {
-		logPageWithLevel("ERR", pageID, "write failed: %v", err)
-		return err
+	if rc.dryRun {
+		rc.writer.AddPageMetadata(pageIDStr, record)
+	} else {
+		if err := rc.writer.AddPage(pageIDStr, record); err != nil {
+			logPageWithLevel("ERR", pageID, "write failed: %v", err)
+			return err
+		}
 	}
 
 	storedRecord, ok := rc.writer.GetPages()[pageIDStr]
@@ -301,9 +339,56 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 	}
 	metrics.rerenderedCount++
 
-	logPageWithLevel("OK", pageID, "%s", crawledPage.Title)
+	if rc.dryRun {
+		logPageWithLevel("OK", pageID, "%s (dry-run)", crawledPage.Title)
+	} else {
+		logPageWithLevel("OK", pageID, "%s", crawledPage.Title)
+	}
 	metrics.successCount++
 	return nil
+}
+
+func reusedPageArtifactMissing(outputDir string, record store.PageRecord) bool {
+	localPath := strings.TrimSpace(record.LocalPath)
+	if localPath == "" {
+		return true
+	}
+
+	absPath := filepath.Join(outputDir, filepath.FromSlash(localPath))
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return true
+	}
+
+	return false
+}
+
+func previewPageAttachments(pageID string, attachments []confluenceclient.AttachmentData, maxSizeMB int) []store.AttachmentResult {
+	if len(attachments) == 0 {
+		return nil
+	}
+
+	maxBytes := int64(maxSizeMB) * 1024 * 1024
+	results := make([]store.AttachmentResult, 0, len(attachments))
+	for _, a := range attachments {
+		result := store.AttachmentResult{OriginalName: a.Filename}
+		if maxBytes > 0 && a.FileSizeBytes > maxBytes {
+			result.Skipped = true
+			result.Error = fmt.Errorf("attachment %q skipped: size %d bytes exceeds limit of %d bytes", a.Filename, a.FileSizeBytes, maxBytes)
+			results = append(results, result)
+			continue
+		}
+		if strings.TrimSpace(a.ID) == "" {
+			result.Error = fmt.Errorf("attachment %q has no attachment ID", a.Filename)
+			results = append(results, result)
+			continue
+		}
+
+		result.Filename = store.PageAttachmentFilename(pageID, a.Filename)
+		result.FileID = a.FileID
+		results = append(results, result)
+	}
+
+	return results
 }
 
 func logPageWithLevel(level string, pageID int64, messageFormat string, args ...any) {
@@ -316,6 +401,19 @@ func logPageAttachmentWarning(pageID int64, err error) {
 }
 
 func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error) {
+	if rc.dryRun {
+		pagesPreview := snapshotPageRecords(rc.writer.GetPages())
+		pruneMetadataToCrawledSet(pagesPreview, rc.crawlResults)
+		rebuildIncomingLinks(pagesPreview)
+
+		reconcileStats := previewManagedArtifactReconcile(rc.previousPages, pagesPreview)
+		return &runFinalizeResult{
+			rewriteStats:       links.RewriteStats{},
+			reconcileStats:     reconcileStats,
+			checkpointAdvanced: false,
+		}, nil
+	}
+
 	pruneMetadataToCrawledSet(rc.writer.GetPages(), rc.crawlResults)
 
 	rewriteStats, err := finalizeTraversalOutput(rc.cfg.Output.Dir, rc.writer)
@@ -362,7 +460,12 @@ func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error
 func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFinalizeResult, elapsed time.Duration) {
 	stats := rc.crawler.Stats()
 	fmt.Printf("\n=== Crawl Complete ===\n")
-	fmt.Printf("Mode: %s\n", rc.mode)
+	if rc.dryRun {
+		fmt.Printf("Mode: %s (dry-run)\n", rc.mode)
+		fmt.Printf("Dry-run: no output artifacts, metadata, or checkpoints were written\n")
+	} else {
+		fmt.Printf("Mode: %s\n", rc.mode)
+	}
 	fmt.Printf("Total pages crawled: %d\n", stats["total_pages"])
 	if depthDist, ok := stats["depth_distribution"].(map[int]int); ok {
 		for depth := 0; depth <= rc.cfg.Crawl.MaxDepth; depth++ {
@@ -371,13 +474,21 @@ func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFin
 			}
 		}
 	}
-	fmt.Printf("Pages written successfully: %d\n", metrics.successCount)
+	if rc.dryRun {
+		fmt.Printf("Pages processed successfully (predicted): %d\n", metrics.successCount)
+	} else {
+		fmt.Printf("Pages written successfully: %d\n", metrics.successCount)
+	}
 	fmt.Printf("Pages with errors: %d\n", metrics.errorCount)
 	fmt.Printf("Internal crawl links discovered (edge count): %d\n", stats["total_links"])
 	fmt.Printf("Unique internal target pages linked: %d\n", stats["unique_internal_targets"])
 	fmt.Printf("External links skipped (host filter): %d\n", stats["external_links_skipped"])
-	fmt.Printf("Pages with rewritten links: %d/%d\n", finalizeResult.rewriteStats.PagesUpdated, finalizeResult.rewriteStats.PagesProcessed)
-	fmt.Printf("Markdown links rewritten to local paths: %d/%d\n", finalizeResult.rewriteStats.LinksRewritten, finalizeResult.rewriteStats.LinksSeen)
+	if rc.dryRun {
+		fmt.Printf("Link rewrite pass: skipped (dry-run)\n")
+	} else {
+		fmt.Printf("Pages with rewritten links: %d/%d\n", finalizeResult.rewriteStats.PagesUpdated, finalizeResult.rewriteStats.PagesProcessed)
+		fmt.Printf("Markdown links rewritten to local paths: %d/%d\n", finalizeResult.rewriteStats.LinksRewritten, finalizeResult.rewriteStats.LinksSeen)
+	}
 	fmt.Printf("Pages with comments appended: %d\n", metrics.pagesWithComments)
 	fmt.Printf("Total comments fetched: %d\n", metrics.totalCommentsFetched)
 	fmt.Printf("Pages with comment fetch warnings: %d\n", metrics.commentFetchFailures)
@@ -394,16 +505,29 @@ func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFin
 		fmt.Printf("Pages re-rendered: %d\n", metrics.rerenderedCount)
 		fmt.Printf("Pages reused without full re-processing: %d\n", metrics.reusedCount)
 		fmt.Printf("Re-render saves: %d (%.1f%%)\n", rerenderSavedCount, rerenderSavedPercent)
-		fmt.Printf("Managed files added/updated/deleted: %d/%d/%d\n", metrics.fileAddedCount, metrics.fileUpdatedCount, finalizeResult.reconcileStats.Deleted)
-		fmt.Printf("Attachments downloaded/reused: %d/%d\n", metrics.attachmentsDownloaded, metrics.attachmentsReused)
-		fmt.Printf("Output commit status: direct-write (non-transactional)\n")
-		if finalizeResult.checkpointAdvanced {
-			fmt.Printf("Checkpoint advanced: yes\n")
+		if rc.dryRun {
+			fmt.Printf("Managed files that would be added/updated/deleted: %d/%d/%d\n", metrics.fileAddedCount, metrics.fileUpdatedCount, finalizeResult.reconcileStats.Deleted)
 		} else {
-			fmt.Printf("Checkpoint advanced: no\n")
+			fmt.Printf("Managed files added/updated/deleted: %d/%d/%d\n", metrics.fileAddedCount, metrics.fileUpdatedCount, finalizeResult.reconcileStats.Deleted)
+		}
+		fmt.Printf("Attachments downloaded/reused: %d/%d\n", metrics.attachmentsDownloaded, metrics.attachmentsReused)
+		if rc.dryRun {
+			fmt.Printf("Output commit status: dry-run (no writes)\n")
+			fmt.Printf("Checkpoint advanced: no (dry-run suppresses checkpoint writes)\n")
+		} else {
+			fmt.Printf("Output commit status: direct-write (non-transactional)\n")
+			if finalizeResult.checkpointAdvanced {
+				fmt.Printf("Checkpoint advanced: yes\n")
+			} else {
+				fmt.Printf("Checkpoint advanced: no\n")
+			}
 		}
 	}
-	fmt.Printf("Managed artifacts deleted as stale: %d\n", finalizeResult.reconcileStats.Deleted)
+	if rc.dryRun {
+		fmt.Printf("Managed artifacts that would be deleted as stale: %d\n", finalizeResult.reconcileStats.Deleted)
+	} else {
+		fmt.Printf("Managed artifacts deleted as stale: %d\n", finalizeResult.reconcileStats.Deleted)
+	}
 	fmt.Printf("Output directory: %s\n", rc.cfg.Output.Dir)
 	fmt.Printf("Total time: %s\n", elapsed.Round(time.Second))
 }

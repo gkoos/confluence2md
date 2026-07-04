@@ -40,6 +40,7 @@ What you get:
 - Supports two run modes:
   - **full**: crawl all pages reachable from seeds up to max depth.
   - **updates**: run the same seed-based traversal as full mode, but selectively re-process dirty pages while reusing clean-page artifacts.
+- Supports a **dry-run** modifier (`--dry-run`) for both modes to preview traversal and updates decisions without writing output artifacts.
 
 ## Download
 
@@ -115,6 +116,12 @@ confluence2md --mode full
 
 Note: full mode clears the configured output directory before crawling.
 
+To preview impact without writing files:
+
+```sh
+confluence2md --mode full --dry-run
+```
+
 Once it completes, start at `output/index.md` for crawl summary and seed entrypoints.
 
 ### CLI Usage
@@ -125,6 +132,12 @@ confluence2md --mode full
 
 # Incremental update (same seed traversal, selective page re-processing)
 confluence2md --mode updates
+
+# Full dry-run (no writes: pages/attachments/metadata/index/checkpoints)
+confluence2md --mode full --dry-run
+
+# Updates dry-run (same traversal + dirty/clean decisions, no writes)
+confluence2md --mode updates --dry-run
 
 # Validate config and Confluence API credentials without crawling
 confluence2md validate
@@ -166,6 +179,13 @@ For updates mode, the summary additionally reports:
 - Attachments downloaded/reused
 - Output commit status
 - Checkpoint advanced status (successful-checkpoint advancement)
+
+For dry-run mode, the summary indicates:
+
+- Dry-run mode is active (no writes)
+- Link rewrite pass is skipped
+- File/attachment/deletion counts are reported as "would" or predicted outcomes
+- Checkpoint advancement is suppressed
 
 Note: current output commit behavior is direct-write (non-transactional).
 

@@ -13,6 +13,7 @@ import (
 var (
 	cfgFile   string
 	mode      string
+	dryRun    bool
 	startTime time.Time
 )
 
@@ -31,11 +32,12 @@ var validateCmd = &cobra.Command{
 func init() {
 	rootCmd.Flags().StringVar(&cfgFile, "config", "config.yaml", "Path to config file")
 	rootCmd.Flags().StringVar(&mode, "mode", "", "Crawl mode: full or updates (required)")
+	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview crawl scope and decisions without writing output artifacts")
 	rootCmd.AddCommand(validateCmd)
 }
 
 func run(cmd *cobra.Command, args []string) error {
-	rc, err := bootstrapRun(mode, cfgFile)
+	rc, err := bootstrapRun(mode, cfgFile, dryRun)
 	if err != nil {
 		return err
 	}
