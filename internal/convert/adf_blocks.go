@@ -73,10 +73,7 @@ func renderParagraph(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 }
 
 func renderHeading(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
-	level := max(attrInt(node, "level", 1), 1)
-	if level > 6 {
-		level = 6
-	}
+	level := min(max(attrInt(node, "level", 1), 1), 6)
 	ensureBlankLine(buf)
 	buf.WriteString(strings.Repeat("#", level))
 	buf.WriteString(" ")

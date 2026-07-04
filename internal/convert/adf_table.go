@@ -157,10 +157,7 @@ func renderCellHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 func renderNodeHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 	switch node.Type {
 	case "heading":
-		lvl := max(attrInt(node, "level", 1), 1)
-		if lvl > 6 {
-			lvl = 6
-		}
+		lvl := min(max(attrInt(node, "level", 1), 1), 6)
 		tag := "h" + itoa(lvl)
 		buf.WriteString("<" + tag + ">")
 		var inner strings.Builder
