@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/gkoos/confluence2md/compare/v1.1.2...v1.2.0) (2026-07-04)
+
+
+### Features
+
+* add accurate dry-run mode for full and updates crawls ([#54](https://github.com/gkoos/confluence2md/issues/54)) ([1131f63](https://github.com/gkoos/confluence2md/commit/1131f63e082a94c36db11afb4cca1621687c4aff))
+
 ## [1.1.2](https://github.com/gkoos/confluence2md/compare/v1.1.1...v1.1.2) (2026-06-25)
 
 
