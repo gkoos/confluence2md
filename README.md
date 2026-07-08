@@ -93,6 +93,15 @@ output:
   # Directory to write Markdown files, attachments, and metadata
   dir: ./output
 
+post_crawl_hook:
+  # Optional fire-and-forget command run after successful non-dry-run completion.
+  # Command is argv-style (no shell parsing).
+  # command:
+  #   - ./scripts/reindex.sh
+  #   - --output
+  #   - ./output
+  command: []
+
 attachments:
   # Download attachments referenced by crawled pages
   download: true
@@ -148,6 +157,28 @@ The tool looks for `config.yaml` in the current directory by default. Use `--con
 ```sh
 confluence2md --config /path/to/config.yaml --mode full
 confluence2md --config /path/to/config.yaml validate
+```
+
+### Post-crawl hook
+
+You can configure an optional post-crawl hook command in `config.yaml` to trigger follow-up automation such as indexing.
+
+MVP behavior:
+
+- Hook runs only after successful non-dry-run completion.
+- Hook is fire-and-forget: crawler starts the process and does not wait for completion.
+- If the hook process cannot be started, crawler logs a warning and still exits successfully.
+
+Hook command is argv-style to avoid shell quoting ambiguity.
+
+Example:
+
+```yaml
+post_crawl_hook:
+  command:
+    - ./scripts/reindex.sh
+    - --output
+    - ./output
 ```
 
 After each run a summary is printed to stdout:

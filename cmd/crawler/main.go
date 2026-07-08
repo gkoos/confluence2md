@@ -58,7 +58,9 @@ func run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	printRunSummary(rc, metrics, finalizeResult, time.Since(startTime))
+	elapsed := time.Since(startTime)
+	printRunSummary(rc, metrics, finalizeResult, elapsed)
+	runPostCrawlHook(rc)
 	return nil
 }
 
