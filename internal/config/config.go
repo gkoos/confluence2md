@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	Confluence ConfluenceConfig `mapstructure:"confluence"`
-	Crawl      CrawlConfig      `mapstructure:"crawl"`
-	Output     OutputConfig     `mapstructure:"output"`
-	Attachments AttachmentsConfig `mapstructure:"attachments"`
-	Retry      RetryConfig      `mapstructure:"retry"`
+	Confluence    ConfluenceConfig    `mapstructure:"confluence"`
+	Crawl         CrawlConfig         `mapstructure:"crawl"`
+	Output        OutputConfig        `mapstructure:"output"`
+	Attachments   AttachmentsConfig   `mapstructure:"attachments"`
+	PostCrawlHook PostCrawlHookConfig `mapstructure:"post_crawl_hook"`
+	Retry         RetryConfig         `mapstructure:"retry"`
 }
 
 type ConfluenceConfig struct {
@@ -24,11 +25,11 @@ type ConfluenceConfig struct {
 
 type CrawlConfig struct {
 	Seeds          []string `mapstructure:"seeds"`
-	MaxDepth        int      `mapstructure:"max_depth"`
-	Concurrency     int      `mapstructure:"concurrency"`
-	RateLimitRPM    int      `mapstructure:"rate_limit_rpm"`
-	QueueSize       int      `mapstructure:"queue_size"`
-	FollowChildren  bool     `mapstructure:"follow_children"`
+	MaxDepth       int      `mapstructure:"max_depth"`
+	Concurrency    int      `mapstructure:"concurrency"`
+	RateLimitRPM   int      `mapstructure:"rate_limit_rpm"`
+	QueueSize      int      `mapstructure:"queue_size"`
+	FollowChildren bool     `mapstructure:"follow_children"`
 }
 
 type OutputConfig struct {
@@ -36,13 +37,17 @@ type OutputConfig struct {
 }
 
 type AttachmentsConfig struct {
-	Download   bool `mapstructure:"download"`
-	MaxSizeMB  int  `mapstructure:"max_size_mb"`
+	Download  bool `mapstructure:"download"`
+	MaxSizeMB int  `mapstructure:"max_size_mb"`
 }
 
 type RetryConfig struct {
 	MaxAttempts      int `mapstructure:"max_attempts"`
 	InitialBackoffMS int `mapstructure:"initial_backoff_ms"`
+}
+
+type PostCrawlHookConfig struct {
+	Command []string `mapstructure:"command"`
 }
 
 // Load reads the config file at the given path and returns a validated Config.
@@ -107,6 +112,19 @@ func (c *Config) Validate() error {
 	}
 	if c.Retry.InitialBackoffMS < 1 {
 		errs = append(errs, "retry.initial_backoff_ms must be >= 1")
+	}
+
+	if len(c.PostCrawlHook.Command) > 0 {
+		hasExecutable := false
+		for _, token := range c.PostCrawlHook.Command {
+			if strings.TrimSpace(token) != "" {
+				hasExecutable = true
+				break
+			}
+		}
+		if !hasExecutable {
+			errs = append(errs, "post_crawl_hook.command must include a non-empty executable")
+		}
 	}
 
 	if len(errs) > 0 {

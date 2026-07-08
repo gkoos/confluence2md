@@ -26,6 +26,16 @@ output:
   # Directory to write Markdown files, attachments, and metadata
   dir: ./output
 
+post_crawl_hook:
+  # Optional fire-and-forget command run after a successful non-dry-run crawl.
+  # Command is argv-style to avoid shell quoting issues.
+  # Example: trigger local index refresh after crawl completion.
+  # command:
+  #   - ./scripts/reindex.sh
+  #   - --output
+  #   - ./output
+  command: []
+
 attachments:
   # Download attachments referenced by crawled pages
   download: true

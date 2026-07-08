@@ -60,7 +60,8 @@ func TestValidate_AcceptsPositiveConcurrencyAndRateLimit(t *testing.T) {
 			RateLimitRPM: 250,
 			QueueSize:    10000,
 		},
-		Output: OutputConfig{Dir: "./output"},
+		Output:        OutputConfig{Dir: "./output"},
+		PostCrawlHook: PostCrawlHookConfig{Command: []string{"./scripts/reindex.sh", "--db", "./output/confluence2md-index.db"}},
 		Retry: RetryConfig{
 			MaxAttempts:      3,
 			InitialBackoffMS: 1000,
@@ -69,5 +70,35 @@ func TestValidate_AcceptsPositiveConcurrencyAndRateLimit(t *testing.T) {
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected valid config, got: %v", err)
+	}
+}
+
+func TestValidate_RejectsHookWithWhitespaceOnlyCommand(t *testing.T) {
+	cfg := &Config{
+		Confluence: ConfluenceConfig{
+			Username: "user@example.com",
+			Token:    "token",
+		},
+		Crawl: CrawlConfig{
+			Seeds:        []string{"https://example.atlassian.net/wiki/spaces/ABC/pages/123/Example"},
+			MaxDepth:     1,
+			Concurrency:  2,
+			RateLimitRPM: 250,
+			QueueSize:    10000,
+		},
+		Output:        OutputConfig{Dir: "./output"},
+		PostCrawlHook: PostCrawlHookConfig{Command: []string{"   ", "\t"}},
+		Retry: RetryConfig{
+			MaxAttempts:      3,
+			InitialBackoffMS: 1000,
+		},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "post_crawl_hook.command must include a non-empty executable") {
+		t.Fatalf("expected post-crawl hook validation error, got: %s", err.Error())
 	}
 }
