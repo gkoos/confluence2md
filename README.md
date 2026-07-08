@@ -161,9 +161,11 @@ confluence2md --config /path/to/config.yaml validate
 
 ### Post-crawl hook
 
-You can configure an optional post-crawl hook command in `config.yaml` to trigger follow-up automation such as indexing.
+You can configure an optional post-crawl hook command in `config.yaml` to trigger follow-up automation after a successful crawl.
 
-MVP behavior:
+The primary use case is running [confluence2md-indexer](https://github.com/gkoos/confluence2md-indexer) so the local search index is refreshed immediately after crawling.
+
+Behavior:
 
 - Hook runs only after successful non-dry-run completion.
 - Hook is fire-and-forget: crawler starts the process and does not wait for completion.
@@ -176,9 +178,11 @@ Example:
 ```yaml
 post_crawl_hook:
   command:
-    - ./scripts/reindex.sh
-    - --output
+    - confluence2md-indexer
+    - index
     - ./output
+    - --db
+    - ./output/confluence2md-index.db
 ```
 
 After each run a summary is printed to stdout:
