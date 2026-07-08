@@ -31,17 +31,17 @@ func runPostCrawlHookWithWriter(rc *runContext, out io.Writer) {
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(out, "[WARN] post-crawl hook failed to start: %v\n", err)
+		_, _ = fmt.Fprintf(out, "[WARN] post-crawl hook failed to start: %v\n", err)
 		return
 	}
 
 	pid := cmd.Process.Pid
 	if err := cmd.Process.Release(); err != nil {
-		fmt.Fprintf(out, "[WARN] post-crawl hook started (pid=%d), but process release failed: %v\n", pid, err)
+		_, _ = fmt.Fprintf(out, "[WARN] post-crawl hook started (pid=%d), but process release failed: %v\n", pid, err)
 		return
 	}
 
-	fmt.Fprintf(out, "Post-crawl hook handed off (pid=%d): %s\n", pid, strings.Join(command, " "))
+	_, _ = fmt.Fprintf(out, "Post-crawl hook handed off (pid=%d): %s\n", pid, strings.Join(command, " "))
 }
 
 func normalizePostCrawlHookCommand(raw []string) []string {
