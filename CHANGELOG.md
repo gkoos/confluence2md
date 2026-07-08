@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/gkoos/confluence2md/compare/v1.2.0...v1.3.0) (2026-07-08)
+
+
+### Features
+
+* add optional fire-and-forget post-crawl hook ([#56](https://github.com/gkoos/confluence2md/issues/56)) ([4653865](https://github.com/gkoos/confluence2md/commit/4653865bd24d86c39e34e792eaa1faea5ed96316))
+
 ## [1.2.0](https://github.com/gkoos/confluence2md/compare/v1.1.2...v1.2.0) (2026-07-04)
 
 
