@@ -27,6 +27,10 @@ What you get:
 - A human-friendly `index.md` start page with crawl summary and seed links.
 - A `metadata.json` index with page metadata plus incoming/outgoing link graph data.
 
+## Part of the `confluence2md` Platform
+
+`confluence2md` is the first step in a three-tool local Confluence knowledge pipeline. Pair it with [`confluence2md-indexer`](https://github.com/gkoos/confluence2md-indexer) to build a searchable SQLite index, and [`confluence2md-mcp`](https://github.com/gkoos/confluence2md-mcp) to query it from any AI client. See [docs/platform.md](docs/platform.md) for the full architecture.
+
 ## What It Does
 
 - Starts from configured seed pages and traverses linked Confluence pages up to a configurable depth.

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 220" width="960" height="220" font-family="ui-monospace, 'Cascadia Code', 'SF Mono', monospace, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+
+  <!-- Confluence -->
+  <rect x="10" y="65" width="140" height="80" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="80" y="98" text-anchor="middle" font-size="13" font-weight="600" fill="#1e3a5f">Confluence</text>
+  <text x="80" y="116" text-anchor="middle" font-size="11" fill="#64748b">Cloud / Server</text>
+  <text x="80" y="133" text-anchor="middle" font-size="10" fill="#94a3b8">REST API</text>
+
+  <!-- Arrow 1: crawl -->
+  <line x1="150" y1="105" x2="198" y2="105" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="174" y="98" text-anchor="middle" font-size="10" fill="#6b7280">crawl</text>
+
+  <!-- confluence2md -->
+  <rect x="200" y="45" width="175" height="120" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="2"/>
+  <text x="288" y="78" text-anchor="middle" font-size="13" font-weight="700" fill="#92400e">confluence2md</text>
+  <text x="288" y="96" text-anchor="middle" font-size="10" fill="#78716c">crawler &amp; converter</text>
+  <line x1="220" y1="104" x2="355" y2="104" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="288" y="120" text-anchor="middle" font-size="10" fill="#57534e">→ .md files per page</text>
+  <text x="288" y="136" text-anchor="middle" font-size="10" fill="#57534e">→ metadata.json</text>
+  <text x="288" y="152" text-anchor="middle" font-size="10" fill="#57534e">→ index.md</text>
+
+  <!-- Arrow 2: index -->
+  <line x1="375" y1="105" x2="423" y2="105" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="399" y="98" text-anchor="middle" font-size="10" fill="#6b7280">index</text>
+
+  <!-- confluence2md-indexer -->
+  <rect x="425" y="45" width="200" height="120" rx="8" fill="#f0fdf4" stroke="#22c55e" stroke-width="2"/>
+  <text x="525" y="78" text-anchor="middle" font-size="13" font-weight="700" fill="#14532d">confluence2md-indexer</text>
+  <text x="525" y="96" text-anchor="middle" font-size="10" fill="#4b7c59">hybrid search index</text>
+  <line x1="445" y1="104" x2="605" y2="104" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="525" y="120" text-anchor="middle" font-size="10" fill="#374151">→ lexical FTS (BM25)</text>
+  <text x="525" y="136" text-anchor="middle" font-size="10" fill="#374151">→ vector embeddings</text>
+  <text x="525" y="152" text-anchor="middle" font-size="10" fill="#374151">→ SQLite database</text>
+
+  <!-- Arrow 3: serve -->
+  <line x1="625" y1="105" x2="673" y2="105" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="649" y="98" text-anchor="middle" font-size="10" fill="#6b7280">serve</text>
+
+  <!-- confluence2md-mcp -->
+  <rect x="675" y="45" width="185" height="120" rx="8" fill="#fdf4ff" stroke="#a855f7" stroke-width="2"/>
+  <text x="768" y="78" text-anchor="middle" font-size="13" font-weight="700" fill="#581c87">confluence2md-mcp</text>
+  <text x="768" y="96" text-anchor="middle" font-size="10" fill="#7c3aed">MCP stdio server</text>
+  <line x1="695" y1="104" x2="840" y2="104" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="768" y="120" text-anchor="middle" font-size="10" fill="#374151">→ VS Code Copilot</text>
+  <text x="768" y="136" text-anchor="middle" font-size="10" fill="#374151">→ Claude Code</text>
+  <text x="768" y="152" text-anchor="middle" font-size="10" fill="#374151">→ any MCP client</text>
+
+  <!-- Arrow 4: results -->
+  <line x1="860" y1="105" x2="908" y2="105" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="884" y="98" text-anchor="middle" font-size="10" fill="#6b7280">results</text>
+
+  <!-- AI Client -->
+  <rect x="910" y="75" width="40" height="60" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="930" y="100" text-anchor="middle" font-size="10" fill="#475569">AI</text>
+  <text x="930" y="116" text-anchor="middle" font-size="10" fill="#475569">client</text>
+</svg>
