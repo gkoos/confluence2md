@@ -7,6 +7,7 @@ This guide covers practical runtime behavior, failure modes, and recovery steps.
 - Full mode crawls from configured seeds up to max depth.
 - Full mode clears the configured output directory before writing new crawl output.
 - Updates mode (v1.0 scope) uses the same seed-based traversal as full mode, then selectively re-processes dirty pages and reuses clean-page artifacts.
+- During updates traversal, a page returned with Confluence status `trashed` or an HTTP 404 is classified as deleted. Deletion is an expected state, not a page error.
 - Dry-run mode (`--dry-run`) preserves traversal and decision logic but suppresses write side effects.
 - Output commit behavior is currently direct-write (non-transactional): files are written directly under the configured output directory during the run.
 - Page export is resilient: non-critical failures (for example comment fetch or attachment retrieval failures) should not block page Markdown output.
@@ -30,6 +31,7 @@ Suppressed side effects in dry-run:
 - no checkpoint updates
 
 Summary output in dry-run presents predicted outcomes (for example would-be added/updated/deleted managed files).
+Deleted pages are still detected and counted during an updates dry-run, but their metadata and managed artifacts remain unchanged.
 
 ## Common failure scenarios
 
@@ -120,10 +122,21 @@ If links are not rewritten as expected:
 - If a reused page's local markdown file is missing on disk, the crawler now recreates that file from stored content before rewrite/finalization.
 - This prevents avoidable updates-run failures caused by missing local artifacts from partial/manual output cleanup.
 
+## Updates-mode deleted pages
+
+- Confluence Cloud commonly returns a trashed page with HTTP 200 and `status: trashed`; permanently removed or otherwise missing pages may return HTTP 404. Updates mode treats both responses as deletion signals.
+- Deleted pages remain traversal results long enough for finalization to identify them, but they do not enqueue child links or enter the surviving metadata set.
+- Deleted page IDs are pruned from every surviving page's stored `outgoing_links`, preventing clean pages from rediscovering the deleted target on later runs.
+- Finalization removes the deleted page's metadata record, Markdown file, and managed attachments through the normal stale-artifact reconciliation pass.
+- A deletion increments the deleted-page counter without incrementing success or error counters. A deletion-only run can therefore advance the successful checkpoint.
+- Dry-run performs the same classification and reports the files that would be removed without changing metadata, artifacts, or checkpoints.
+
 ## Updates summary semantics
 
 When running in updates mode, summary counters are interpreted as follows:
 
+- `Reachable pages`: non-deleted pages retained in the current crawl result.
+- `Pages detected as deleted`: pages classified from HTTP 404 or Confluence `status: trashed` responses.
 - `Pages re-rendered`: pages that were fully re-processed because lightweight state checks identified changes (or a conservative fallback marked them dirty).
 - `Pages reused without full re-processing`: pages treated as clean and carried forward via metadata-only upsert.
 - `Checkpoint advanced`: `yes` only when the last successful checkpoint tuple (started_at/completed_at/mode) changed relative to the pre-run checkpoint snapshot.
@@ -136,7 +149,7 @@ The crawler persists two checkpoint tuples in `metadata.json`:
 - `last_completed_*`: updated for every run that reaches finalize + metadata save.
 - `last_successful_*`: updated only when the run has zero page errors.
 
-Updates-mode dirty checks compare previous page metadata against current lightweight page state (version/title/attachment signature). Checkpoint tuples are persisted for reporting and operational auditing.
+Updates-mode classification first checks lightweight page status for deletion, then compares previous page metadata against current version, title, and attachment signature for dirty/clean decisions. Checkpoint tuples are persisted for reporting and operational auditing.
 
 ## Confluence Cloud API quotas and scaling
 

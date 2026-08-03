@@ -46,6 +46,12 @@ What you get:
   - **updates**: run the same seed-based traversal as full mode, but selectively re-process dirty pages while reusing clean-page artifacts.
 - Supports a **dry-run** modifier (`--dry-run`) for both modes to preview traversal and updates decisions without writing output artifacts.
 
+In updates mode, pages that Confluence reports as trashed or no longer found are
+treated as deleted rather than failed fetches. Their metadata and managed local
+artifacts are removed, and references to their page IDs are pruned from the
+stored crawl graph. A detected deletion does not count as a page error or block
+successful checkpoint advancement.
+
 ## Download
 
 Pre-built binaries are available on the [Releases](https://github.com/gkoos/confluence2md/releases) page.
@@ -211,6 +217,7 @@ Output directory: ./output
 For updates mode, the summary additionally reports:
 
 - Reachable pages
+- Pages detected as deleted
 - Pages re-rendered
 - Pages reused without full re-processing
 - Re-render saves (count and percent)

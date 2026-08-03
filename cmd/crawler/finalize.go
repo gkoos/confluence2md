@@ -134,7 +134,10 @@ func pruneMetadataToCrawledSet(pages map[string]store.PageRecord, crawlResults m
 		return
 	}
 	reachable := make(map[string]struct{}, len(crawlResults))
-	for pageID := range crawlResults {
+	for pageID, crawledPage := range crawlResults {
+		if crawledPage == nil || crawledPage.Deleted {
+			continue
+		}
 		reachable[strconv.FormatInt(pageID, 10)] = struct{}{}
 	}
 	for pageID := range pages {
