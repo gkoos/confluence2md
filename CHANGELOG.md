@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1](https://github.com/gkoos/confluence2md/compare/v1.3.0...v1.3.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **crawler:** handle deleted pages in updates mode ([#62](https://github.com/gkoos/confluence2md/issues/62)) ([d7c42e4](https://github.com/gkoos/confluence2md/commit/d7c42e463adcadd1a18250fb61be02f2960b1535))
+
 ## [1.3.0](https://github.com/gkoos/confluence2md/compare/v1.2.0...v1.3.0) (2026-07-08)
 
 
