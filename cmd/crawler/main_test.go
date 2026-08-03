@@ -364,6 +364,122 @@ func TestFinalizeRun_ZeroErrorsAdvanceCompletedAndSuccessful(t *testing.T) {
 	}
 }
 
+func TestDeletedPageIsRemovedFromMetadataAndManagedArtifacts(t *testing.T) {
+	outDir := t.TempDir()
+	w, err := store.NewWriter(outDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+	if err := w.AddPage("42", store.PageRecord{
+		ID:            "42",
+		Title:         "Deleted page",
+		StorageFormat: "# Deleted page\n",
+		Attachments:   []string{"42-diagram.png"},
+	}); err != nil {
+		t.Fatalf("AddPage returned error: %v", err)
+	}
+	previousPages := snapshotPageRecords(w.GetPages())
+	deletedPath := previousPages["42"].LocalPath
+	attachmentDir := filepath.Join(outDir, "attachments")
+	if err := os.MkdirAll(attachmentDir, 0755); err != nil {
+		t.Fatalf("create attachment directory: %v", err)
+	}
+	attachmentPath := filepath.Join(attachmentDir, "42-diagram.png")
+	if err := os.WriteFile(attachmentPath, []byte("image"), 0644); err != nil {
+		t.Fatalf("write attachment fixture: %v", err)
+	}
+
+	rc := &runContext{
+		mode:          "updates",
+		cfg:           &config.Config{Output: config.OutputConfig{Dir: outDir}},
+		writer:        w,
+		crawlResults:  map[int64]*crawl.CrawledPage{42: {ID: 42, Title: "Deleted page", Deleted: true}},
+		previousPages: previousPages,
+	}
+	metrics := &runMetrics{}
+
+	if err := processTraversalResults(context.Background(), rc, metrics); err != nil {
+		t.Fatalf("processTraversalResults returned error: %v", err)
+	}
+	result, err := finalizeRun(rc, metrics)
+	if err != nil {
+		t.Fatalf("finalizeRun returned error: %v", err)
+	}
+
+	if _, ok := w.GetPages()["42"]; ok {
+		t.Fatal("expected deleted page to be removed from metadata")
+	}
+	if _, statErr := os.Stat(filepath.Join(outDir, deletedPath)); !os.IsNotExist(statErr) {
+		t.Fatalf("expected deleted page artifact to be removed, stat err=%v", statErr)
+	}
+	if _, statErr := os.Stat(attachmentPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected deleted page attachment to be removed, stat err=%v", statErr)
+	}
+	if result.reconcileStats.Deleted != 2 {
+		t.Fatalf("expected two managed artifact deletions, got %d", result.reconcileStats.Deleted)
+	}
+	if !result.checkpointAdvanced {
+		t.Fatal("expected deletion-only run to advance the successful checkpoint")
+	}
+	if metrics.deletedCount != 1 {
+		t.Fatalf("expected one page detected as deleted, got %d", metrics.deletedCount)
+	}
+	if metrics.errorCount != 0 || metrics.successCount != 0 {
+		t.Fatalf("expected deletion not to count as success or error, got success=%d errors=%d", metrics.successCount, metrics.errorCount)
+	}
+}
+
+func TestDeletedPageDryRunPreviewsRemovalWithoutMutation(t *testing.T) {
+	outDir := t.TempDir()
+	w, err := store.NewWriter(outDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+	if err := w.AddPage("42", store.PageRecord{
+		ID:            "42",
+		Title:         "Deleted page",
+		StorageFormat: "# Deleted page\n",
+	}); err != nil {
+		t.Fatalf("AddPage returned error: %v", err)
+	}
+	previousPages := snapshotPageRecords(w.GetPages())
+	deletedPath := previousPages["42"].LocalPath
+
+	rc := &runContext{
+		mode:          "updates",
+		dryRun:        true,
+		cfg:           &config.Config{Output: config.OutputConfig{Dir: outDir}},
+		writer:        w,
+		crawlResults:  map[int64]*crawl.CrawledPage{42: {ID: 42, Title: "Deleted page", Deleted: true}},
+		previousPages: previousPages,
+	}
+	metrics := &runMetrics{}
+
+	if err := processTraversalResults(context.Background(), rc, metrics); err != nil {
+		t.Fatalf("processTraversalResults returned error: %v", err)
+	}
+	result, err := finalizeRun(rc, metrics)
+	if err != nil {
+		t.Fatalf("finalizeRun returned error: %v", err)
+	}
+
+	if result.reconcileStats.Deleted != 1 {
+		t.Fatalf("expected one previewed artifact deletion, got %d", result.reconcileStats.Deleted)
+	}
+	if metrics.deletedCount != 1 {
+		t.Fatalf("expected one page detected as deleted, got %d", metrics.deletedCount)
+	}
+	if result.checkpointAdvanced {
+		t.Fatal("expected dry-run not to advance the successful checkpoint")
+	}
+	if _, ok := w.GetPages()["42"]; !ok {
+		t.Fatal("expected dry-run to leave writer metadata unchanged")
+	}
+	if _, statErr := os.Stat(filepath.Join(outDir, deletedPath)); statErr != nil {
+		t.Fatalf("expected dry-run to retain page artifact, stat err=%v", statErr)
+	}
+}
+
 func TestFinalizeRun_DryRunSkipsWritesAndCheckpoints(t *testing.T) {
 	outDir := t.TempDir()
 	w, err := store.NewWriter(outDir)
@@ -516,9 +632,9 @@ func TestProcessReusedPage_DryRunSkipsArtifactMaterialization(t *testing.T) {
 	}
 	metrics := &runMetrics{}
 	crawledPage := &crawl.CrawledPage{
-		ID:           123,
-		Title:        "Decision Records",
-		Depth:        1,
+		ID:            123,
+		Title:         "Decision Records",
+		Depth:         1,
 		OutgoingLinks: []int64{555},
 	}
 
@@ -537,6 +653,101 @@ func TestProcessReusedPage_DryRunSkipsArtifactMaterialization(t *testing.T) {
 	}
 	if got := metrics.successCount; got != 1 {
 		t.Fatalf("expected success count 1, got %d", got)
+	}
+}
+
+func TestPruneDeletedOutgoingLinksFiltersEverySurvivingPage(t *testing.T) {
+	crawlResults := map[int64]*crawl.CrawledPage{
+		1: {ID: 1, Reused: true, OutgoingLinks: []int64{2, 3, 2}},
+		2: {ID: 2, Deleted: true, OutgoingLinks: []int64{4}},
+		3: {ID: 3, OutgoingLinks: []int64{2, 4}},
+		4: {ID: 4},
+	}
+
+	deletedPageIDs := collectDeletedPageIDs(crawlResults)
+	if _, ok := deletedPageIDs[2]; !ok || len(deletedPageIDs) != 1 {
+		t.Fatalf("unexpected deleted page set: %#v", deletedPageIDs)
+	}
+
+	pruneDeletedOutgoingLinks(crawlResults, deletedPageIDs)
+
+	if got := crawlResults[1].OutgoingLinks; len(got) != 1 || got[0] != 3 {
+		t.Fatalf("unexpected reused-page outgoing links: %#v", got)
+	}
+	if got := crawlResults[3].OutgoingLinks; len(got) != 1 || got[0] != 4 {
+		t.Fatalf("unexpected rerendered-page outgoing links: %#v", got)
+	}
+	if got := crawlResults[2].OutgoingLinks; len(got) != 1 || got[0] != 4 {
+		t.Fatalf("expected deleted page payload to remain untouched, got %#v", got)
+	}
+}
+
+func TestProcessTraversalResultsPersistsPrunedOutgoingLinks(t *testing.T) {
+	outDir := t.TempDir()
+	w, err := store.NewWriter(outDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+	previous := store.PageRecord{ID: "1", Title: "Reused", LocalPath: "reused_1.md", OutgoingLinks: []string{"2"}}
+	rc := &runContext{
+		mode:          "updates",
+		dryRun:        true,
+		cfg:           &config.Config{Output: config.OutputConfig{Dir: outDir}},
+		writer:        w,
+		previousPages: map[string]store.PageRecord{"1": previous},
+		crawlResults: map[int64]*crawl.CrawledPage{
+			1: {ID: 1, Title: "Reused", Reused: true, OutgoingLinks: []int64{2}},
+			2: {ID: 2, Title: "Deleted", Deleted: true},
+			3: {ID: 3, Title: "Rerendered", OutgoingLinks: []int64{2}},
+		},
+		oldManagedArtifacts: managedArtifactSet(map[string]store.PageRecord{"1": previous}),
+	}
+	metrics := &runMetrics{}
+
+	if err := processTraversalResults(context.Background(), rc, metrics); err != nil {
+		t.Fatalf("processTraversalResults returned error: %v", err)
+	}
+	for _, pageID := range []string{"1", "3"} {
+		record, ok := w.GetPages()[pageID]
+		if !ok {
+			t.Fatalf("expected page %s metadata to be written", pageID)
+		}
+		if len(record.OutgoingLinks) != 0 {
+			t.Fatalf("expected page %s deleted links to be pruned, got %#v", pageID, record.OutgoingLinks)
+		}
+	}
+	if _, ok := w.GetPages()["2"]; ok {
+		t.Fatal("expected deleted page metadata not to be written")
+	}
+}
+
+func TestFetchErrorResultIncrementsErrorsAndBlocksCheckpoint(t *testing.T) {
+	outDir := t.TempDir()
+	w, err := store.NewWriter(outDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+	rc := &runContext{
+		mode:          "updates",
+		cfg:           &config.Config{Output: config.OutputConfig{Dir: outDir}},
+		writer:        w,
+		crawlResults:  map[int64]*crawl.CrawledPage{42: {ID: 42, FetchError: "fetch failed"}},
+		previousPages: map[string]store.PageRecord{},
+	}
+	metrics := &runMetrics{}
+
+	if err := processTraversalResults(context.Background(), rc, metrics); err != nil {
+		t.Fatalf("processTraversalResults returned error: %v", err)
+	}
+	if metrics.errorCount != 1 {
+		t.Fatalf("expected one page error, got %d", metrics.errorCount)
+	}
+	result, err := finalizeRun(rc, metrics)
+	if err != nil {
+		t.Fatalf("finalizeRun returned error: %v", err)
+	}
+	if result.checkpointAdvanced {
+		t.Fatal("expected fetch error to block successful checkpoint advancement")
 	}
 }
 

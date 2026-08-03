@@ -3,6 +3,7 @@ package confluence
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -14,6 +15,28 @@ import (
 	atlassian "github.com/ctreminiom/go-atlassian/v2/confluence/v2"
 	"github.com/gkoos/confluence2md/internal/config"
 )
+
+// httpStatusError preserves an HTTP response status while retaining the
+// original API error in the unwrap chain.
+type httpStatusError struct {
+	statusCode int
+	err        error
+}
+
+func (e *httpStatusError) Error() string {
+	return e.err.Error()
+}
+
+func (e *httpStatusError) Unwrap() error {
+	return e.err
+}
+
+// IsNotFound reports whether err was caused by an HTTP 404 response.
+// It recognizes status errors through any number of wrapping layers.
+func IsNotFound(err error) bool {
+	var statusErr *httpStatusError
+	return errors.As(err, &statusErr) && statusErr.statusCode == http.StatusNotFound
+}
 
 // Client wraps the Confluence API client used by the crawler.
 type Client struct {
@@ -109,7 +132,7 @@ func (c *Client) GetPageByID(ctx context.Context, pageID int64, spaceKey string)
 	page, response, err := c.api.Page.Get(ctx, int(pageID), "atlas_doc_format", false, 0)
 	if err != nil {
 		if response != nil {
-			return nil, fmt.Errorf("failed to fetch page %d (status %d): %w", pageID, response.Code, err)
+			return nil, fmt.Errorf("failed to fetch page %d (status %d): %w", pageID, response.Code, &httpStatusError{statusCode: response.Code, err: err})
 		}
 		return nil, fmt.Errorf("failed to fetch page %d: %w", pageID, err)
 	}
@@ -150,14 +173,15 @@ func (c *Client) GetPageState(ctx context.Context, pageID int64, includeAttachme
 	page, response, err := c.api.Page.Get(ctx, int(pageID), "", false, 0)
 	if err != nil {
 		if response != nil {
-			return nil, fmt.Errorf("failed to fetch page state %d (status %d): %w", pageID, response.Code, err)
+			return nil, fmt.Errorf("failed to fetch page state %d (status %d): %w", pageID, response.Code, &httpStatusError{statusCode: response.Code, err: err})
 		}
 		return nil, fmt.Errorf("failed to fetch page state %d: %w", pageID, err)
 	}
 
 	state := &PageStateData{
-		ID:    pageID,
-		Title: strings.TrimSpace(page.Title),
+		ID:     pageID,
+		Title:  strings.TrimSpace(page.Title),
+		Status: strings.TrimSpace(page.Status),
 	}
 	if page.Version != nil {
 		state.Version = page.Version.Number
@@ -307,5 +331,3 @@ func (c *Client) GetPageChildIDs(ctx context.Context, pageID int64) ([]int64, er
 
 	return ids, nil
 }
-
-

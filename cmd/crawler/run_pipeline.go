@@ -40,6 +40,7 @@ type runMetrics struct {
 	commentFetchFailures  int
 	reusedCount           int
 	rerenderedCount       int
+	deletedCount          int
 	fileAddedCount        int
 	fileUpdatedCount      int
 	attachmentsDownloaded int
@@ -142,7 +143,15 @@ func executeTraversal(ctx context.Context, rc *runContext) error {
 }
 
 func processTraversalResults(ctx context.Context, rc *runContext, metrics *runMetrics) error {
+	deletedPageIDs := collectDeletedPageIDs(rc.crawlResults)
+	pruneDeletedOutgoingLinks(rc.crawlResults, deletedPageIDs)
+
 	for pageID, crawledPage := range rc.crawlResults {
+		if crawledPage.Deleted {
+			metrics.deletedCount++
+			logPageWithLevel("INFO", pageID, "%s (deleted)", crawledPage.Title)
+			continue
+		}
 		if rc.mode == "updates" && crawledPage.Reused {
 			if err := processReusedPage(rc, metrics, pageID, crawledPage); err != nil {
 				metrics.errorCount++
@@ -157,6 +166,34 @@ func processTraversalResults(ctx context.Context, rc *runContext, metrics *runMe
 	}
 
 	return nil
+}
+
+func collectDeletedPageIDs(crawlResults map[int64]*crawl.CrawledPage) map[int64]struct{} {
+	deletedPageIDs := make(map[int64]struct{})
+	for pageID, crawledPage := range crawlResults {
+		if crawledPage != nil && crawledPage.Deleted {
+			deletedPageIDs[pageID] = struct{}{}
+		}
+	}
+	return deletedPageIDs
+}
+
+func pruneDeletedOutgoingLinks(crawlResults map[int64]*crawl.CrawledPage, deletedPageIDs map[int64]struct{}) {
+	if len(deletedPageIDs) == 0 {
+		return
+	}
+	for _, crawledPage := range crawlResults {
+		if crawledPage == nil || crawledPage.Deleted || len(crawledPage.OutgoingLinks) == 0 {
+			continue
+		}
+		filtered := crawledPage.OutgoingLinks[:0]
+		for _, targetID := range crawledPage.OutgoingLinks {
+			if _, deleted := deletedPageIDs[targetID]; !deleted {
+				filtered = append(filtered, targetID)
+			}
+		}
+		crawledPage.OutgoingLinks = filtered
+	}
 }
 
 func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawledPage *crawl.CrawledPage) error {
@@ -493,7 +530,7 @@ func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFin
 	fmt.Printf("Total comments fetched: %d\n", metrics.totalCommentsFetched)
 	fmt.Printf("Pages with comment fetch warnings: %d\n", metrics.commentFetchFailures)
 	if rc.mode == "updates" {
-		reachablePages := len(rc.crawlResults)
+		reachablePages := len(rc.crawlResults) - metrics.deletedCount
 		renderCandidates := metrics.rerenderedCount + metrics.reusedCount
 		rerenderSavedCount := metrics.reusedCount
 		rerenderSavedPercent := 0.0
@@ -502,6 +539,7 @@ func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFin
 		}
 
 		fmt.Printf("Reachable pages: %d\n", reachablePages)
+		fmt.Printf("Pages detected as deleted: %d\n", metrics.deletedCount)
 		fmt.Printf("Pages re-rendered: %d\n", metrics.rerenderedCount)
 		fmt.Printf("Pages reused without full re-processing: %d\n", metrics.reusedCount)
 		fmt.Printf("Re-render saves: %d (%.1f%%)\n", rerenderSavedCount, rerenderSavedPercent)

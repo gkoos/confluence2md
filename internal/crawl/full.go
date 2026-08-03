@@ -22,6 +22,7 @@ type CrawledPage struct {
 	Title                string
 	Markdown             string
 	Reused               bool
+	Deleted              bool
 	Comments             []confluence.CommentData
 	CommentCount         int
 	CommentFetchError    string
@@ -62,11 +63,12 @@ type queueDropSample struct {
 const maxQueueDropSamples = 20
 
 // NodeHandlerResult is the mode-specific output produced per traversed node.
-// The traversal engine only depends on OutgoingLinks and FetchError.
+// The traversal engine only depends on OutgoingLinks, FetchError, and Deleted.
 type NodeHandlerResult struct {
 	Page                 *CrawledPage
 	OutgoingLinks        []int64
 	FetchError           string
+	Deleted              bool
 	Title                string
 	ExternalLinksSkipped int
 }
@@ -229,6 +231,18 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 		if result == nil {
 			result = &NodeHandlerResult{FetchError: "node handler returned nil result"}
 		}
+		if result.Deleted {
+			if result.Page == nil {
+				result.Page = &CrawledPage{
+					ID:        item.pageID,
+					Deleted:   true,
+					CrawledAt: time.Now(),
+					Depth:     item.depth,
+				}
+			} else {
+				result.Page.Deleted = true
+			}
+		}
 
 		title := result.Title
 		if title == "" && result.Page != nil {
@@ -248,7 +262,7 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 		<-cs.semaphore
 
 		childCount := 0
-		if result.FetchError == "" && item.depth < cs.maxDepth {
+		if !result.Deleted && result.FetchError == "" && item.depth < cs.maxDepth {
 			cs.enqueueChildren(item.depth, result.OutgoingLinks)
 			childCount = len(result.OutgoingLinks)
 		}
@@ -256,6 +270,8 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 		depthPrefix := fmt.Sprintf("D%d", item.depth)
 		if result.FetchError != "" {
 			fmt.Printf("  [%s] ERR  %d — %s: %s\n", depthPrefix, item.pageID, title, result.FetchError)
+		} else if result.Deleted {
+			fmt.Printf("  [%s] DEL  %d — %s\n", depthPrefix, item.pageID, title)
 		} else {
 			fmt.Printf("  [%s] %3d/%-3d  %d — %s  (+%d links, ext-skip:%d, queue:%d)\n",
 				depthPrefix, cs.totalFetched, visited, item.pageID, title, childCount, result.ExternalLinksSkipped, len(cs.queue))
@@ -418,8 +434,41 @@ func (cs *CrawlSession) processUpdatesNode(ctx context.Context, pageID int64, de
 
 	state, err := cs.client.GetPageState(ctx, pageID, cs.config.Attachments.Download)
 	if err != nil {
+		if confluence.IsNotFound(err) {
+			deletedPage := &CrawledPage{
+				ID:        pageID,
+				Deleted:   true,
+				CrawledAt: time.Now(),
+				Depth:     depth,
+			}
+			if exists {
+				deletedPage.Title = previous.Title
+			}
+			return &NodeHandlerResult{
+				Page:    deletedPage,
+				Deleted: true,
+				Title:   deletedPage.Title,
+			}
+		}
 		// Conservative fallback: unknown state is treated as dirty.
 		return cs.processFullNode(ctx, pageID, depth)
+	}
+	if state != nil && strings.EqualFold(strings.TrimSpace(state.Status), "trashed") {
+		deletedPage := &CrawledPage{
+			ID:        pageID,
+			Title:     state.Title,
+			Deleted:   true,
+			CrawledAt: time.Now(),
+			Depth:     depth,
+		}
+		if deletedPage.Title == "" && exists {
+			deletedPage.Title = previous.Title
+		}
+		return &NodeHandlerResult{
+			Page:    deletedPage,
+			Deleted: true,
+			Title:   deletedPage.Title,
+		}
 	}
 	if state == nil || strings.TrimSpace(state.Title) == "" {
 		// Conservative fallback for incomplete lightweight state.

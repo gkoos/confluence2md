@@ -4,21 +4,21 @@ import "time"
 
 // PageData holds full page content including storage format body.
 type PageData struct {
-	ID              string
-	Title           string
-	Version         int
-	Seed            string
-	StorageFormat   string
+	ID            string
+	Title         string
+	Version       int
+	Seed          string
+	StorageFormat string
 }
 
 // FullPageData represents a page with all fields needed for crawling
 type FullPageData struct {
-	ID             int64
-	Title          string
-	CreatedAt      string // ISO 8601 timestamp when page was created
-	AuthorID       string // Account ID of page creator
-	ParentID       string // Parent page ID in Confluence hierarchy
-	Version        struct {
+	ID        int64
+	Title     string
+	CreatedAt string // ISO 8601 timestamp when page was created
+	AuthorID  string // Account ID of page creator
+	ParentID  string // Parent page ID in Confluence hierarchy
+	Version   struct {
 		Number    int
 		CreatedAt string // ISO 8601 timestamp of last modification
 		AuthorID  string // Account ID of last modifier
@@ -62,6 +62,7 @@ type CommentData struct {
 type PageStateData struct {
 	ID                  int64
 	Title               string
+	Status              string
 	Version             int
 	AttachmentSignature string
 }
