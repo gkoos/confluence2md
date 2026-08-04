@@ -364,7 +364,7 @@ func TestFinalizeRun_ZeroErrorsAdvanceCompletedAndSuccessful(t *testing.T) {
 	}
 }
 
-func TestDeletedPageIsRemovedFromMetadataAndManagedArtifacts(t *testing.T) {
+func TestFullModeDeletedPageIsRemovedFromMetadataAndManagedArtifacts(t *testing.T) {
 	outDir := t.TempDir()
 	w, err := store.NewWriter(outDir)
 	if err != nil {
@@ -390,7 +390,7 @@ func TestDeletedPageIsRemovedFromMetadataAndManagedArtifacts(t *testing.T) {
 	}
 
 	rc := &runContext{
-		mode:          "updates",
+		mode:          "full",
 		cfg:           &config.Config{Output: config.OutputConfig{Dir: outDir}},
 		writer:        w,
 		crawlResults:  map[int64]*crawl.CrawledPage{42: {ID: 42, Title: "Deleted page", Deleted: true}},

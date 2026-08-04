@@ -517,6 +517,7 @@ func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFin
 		fmt.Printf("Pages written successfully: %d\n", metrics.successCount)
 	}
 	fmt.Printf("Pages with errors: %d\n", metrics.errorCount)
+	fmt.Printf("Pages detected as deleted: %d\n", metrics.deletedCount)
 	fmt.Printf("Internal crawl links discovered (edge count): %d\n", stats["total_links"])
 	fmt.Printf("Unique internal target pages linked: %d\n", stats["unique_internal_targets"])
 	fmt.Printf("External links skipped (host filter): %d\n", stats["external_links_skipped"])
@@ -539,7 +540,6 @@ func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFin
 		}
 
 		fmt.Printf("Reachable pages: %d\n", reachablePages)
-		fmt.Printf("Pages detected as deleted: %d\n", metrics.deletedCount)
 		fmt.Printf("Pages re-rendered: %d\n", metrics.rerenderedCount)
 		fmt.Printf("Pages reused without full re-processing: %d\n", metrics.reusedCount)
 		fmt.Printf("Re-render saves: %d (%.1f%%)\n", rerenderSavedCount, rerenderSavedPercent)

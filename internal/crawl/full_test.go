@@ -365,6 +365,118 @@ func TestProcessUpdatesNodeFallsBackToFullFetchForTransientError(t *testing.T) {
 	}
 }
 
+func TestProcessFullNodeTreatsTrashedStatusAsDeleted(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"42","status":"trashed","title":"Deleted page","version":{"number":1}}`))
+	}))
+	defer server.Close()
+
+	cs := newTestCrawlSession(t, server.URL)
+	result := cs.processFullNode(context.Background(), 42, 2)
+
+	assertDeletedNodeResult(t, result, 42, 2, "Deleted page")
+	if requestCount != 1 {
+		t.Fatalf("expected only the full page request, got %d requests", requestCount)
+	}
+}
+
+func TestProcessFullNodeTreatsNotFoundAsDeleted(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		http.Error(w, `{"message":"page not found"}`, http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	cs := newTestCrawlSession(t, server.URL)
+	result := cs.processFullNode(context.Background(), 42, 2)
+
+	assertDeletedNodeResult(t, result, 42, 2, "")
+	if requestCount != 1 {
+		t.Fatalf("expected only the full page request, got %d requests", requestCount)
+	}
+}
+
+func TestProcessFullNodeKeepsTransientFailureAsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"message":"temporary failure"}`, http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	cs := newTestCrawlSession(t, server.URL)
+	result := cs.processFullNode(context.Background(), 42, 2)
+
+	if result == nil || result.Deleted {
+		t.Fatalf("expected non-deleted error result, got %#v", result)
+	}
+	if result.FetchError == "" || result.Page == nil || result.Page.FetchError == "" {
+		t.Fatalf("expected transient failure to remain a fetch error, got %#v", result)
+	}
+}
+
+func TestProcessUpdatesNodeHandlesDeletionBetweenStateAndFullFetch(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.Header().Set("Content-Type", "application/json")
+		if requestCount == 1 {
+			_, _ = w.Write([]byte(`{"id":"42","status":"current","title":"Page","version":{"number":2}}`))
+			return
+		}
+		http.Error(w, `{"message":"page not found"}`, http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	cs := newTestCrawlSession(t, server.URL)
+	cs.EnableUpdatesMode(map[string]store.PageRecord{
+		"42": {ID: "42", Title: "Page", Version: 1},
+	})
+	result := cs.processUpdatesNode(context.Background(), 42, 1)
+
+	assertDeletedNodeResult(t, result, 42, 1, "")
+	if requestCount != 2 {
+		t.Fatalf("expected state request followed by full page request, got %d requests", requestCount)
+	}
+}
+
+func newTestCrawlSession(t *testing.T, serverURL string) *CrawlSession {
+	t.Helper()
+	cfg := &config.Config{
+		Confluence: config.ConfluenceConfig{Username: "user", Token: "token"},
+		Crawl: config.CrawlConfig{
+			Seeds:        []string{serverURL + "/wiki/spaces/SPACE/pages/42/Page"},
+			Concurrency:  1,
+			RateLimitRPM: 60000,
+			QueueSize:    100,
+		},
+		Retry: config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1},
+	}
+	client, err := confluence.NewClient(cfg.BaseURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
+	if err != nil {
+		t.Fatalf("NewClient returned error: %v", err)
+	}
+	return NewCrawlSession(client, cfg, "SPACE")
+}
+
+func assertDeletedNodeResult(t *testing.T, result *NodeHandlerResult, pageID int64, depth int, title string) {
+	t.Helper()
+	if result == nil || !result.Deleted || result.FetchError != "" {
+		t.Fatalf("expected deletion without fetch error, got %#v", result)
+	}
+	if result.Page == nil || !result.Page.Deleted {
+		t.Fatalf("expected deleted page payload, got %#v", result.Page)
+	}
+	if result.Page.ID != pageID || result.Page.Depth != depth || result.Page.Title != title {
+		t.Fatalf("unexpected deleted page payload: %#v", result.Page)
+	}
+	if result.Page.CrawledAt.IsZero() {
+		t.Fatal("expected deleted page crawl timestamp")
+	}
+}
+
 func TestRun_FailsLoudlyWhenQueueSaturates(t *testing.T) {
 	cfg := &config.Config{
 		Crawl: config.CrawlConfig{
