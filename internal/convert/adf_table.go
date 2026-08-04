@@ -7,6 +7,15 @@ import (
 
 func init() {
 	Registry["table"] = renderTable
+	htmlCellRenderers = map[string]htmlCellRenderer{
+		"paragraph":    {render: renderParagraphHTML, requiresHTML: false},
+		"heading":      {render: renderHeadingHTML, requiresHTML: true},
+		"codeBlock":    {render: renderCodeBlockHTML, requiresHTML: true},
+		"bulletList":   {render: renderListHTML, requiresHTML: true},
+		"orderedList":  {render: renderListHTML, requiresHTML: true},
+		"taskList":     {render: renderTaskListHTML, requiresHTML: true},
+		"decisionList": {render: renderDecisionListHTML, requiresHTML: true},
+	}
 }
 
 func renderTable(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
@@ -29,17 +38,14 @@ func tableHasSpans(node ADFNode) bool {
 	return false
 }
 
-// complexCellTypes are ADF node types that cannot be faithfully represented
-// inside a GFM pipe-table cell and require full HTML output.
-var complexCellTypes = map[string]bool{
-	"heading":      true,
-	"codeBlock":    true,
-	"bulletList":   true,
-	"orderedList":  true,
-	"taskList":     true,
-	"decisionList": true,
-	"table":        true, // nested table
+type htmlCellRenderer struct {
+	render       func(ADFNode, *RenderContext, *strings.Builder)
+	requiresHTML bool
 }
+
+// htmlCellRenderers is the single source of truth for block nodes supported
+// inside HTML table cells and whether they force a table off the GFM path.
+var htmlCellRenderers map[string]htmlCellRenderer
 
 func tableHasComplexCells(node ADFNode) bool {
 	for _, row := range node.Content {
@@ -52,7 +58,7 @@ func tableHasComplexCells(node ADFNode) bool {
 
 func cellHasComplexContent(node ADFNode) bool {
 	for _, child := range node.Content {
-		if complexCellTypes[child.Type] {
+		if renderer, ok := htmlCellRenderers[child.Type]; ok && renderer.requiresHTML {
 			return true
 		}
 		if cellHasComplexContent(child) {
@@ -155,62 +161,80 @@ func renderCellHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 }
 
 func renderNodeHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
-	switch node.Type {
-	case "heading":
-		lvl := min(max(attrInt(node, "level", 1), 1), 6)
-		tag := "h" + itoa(lvl)
-		buf.WriteString("<" + tag + ">")
-		var inner strings.Builder
-		walkChildren(node, ctx, &inner)
-		buf.WriteString(strings.TrimSpace(inner.String()))
-		buf.WriteString("</" + tag + ">")
-	case "paragraph":
-		var inner strings.Builder
-		walkChildren(node, ctx, &inner)
-		text := strings.TrimSpace(inner.String())
-		if text != "" {
-			buf.WriteString("<p>" + text + "</p>")
-		}
-	case "bulletList", "orderedList":
-		tag := "ul"
-		if node.Type == "orderedList" {
-			tag = "ol"
-		}
-		buf.WriteString("<" + tag + ">")
-		for _, item := range node.Content {
-			buf.WriteString("<li>")
-			var inner strings.Builder
-			renderCellHTML(item, ctx, &inner)
-			buf.WriteString(strings.TrimSpace(inner.String()))
-			buf.WriteString("</li>")
-		}
-		buf.WriteString("</" + tag + ">")
-	case "codeBlock":
-		buf.WriteString("<pre><code>")
-		var inner strings.Builder
-		walkChildren(node, ctx, &inner)
-		buf.WriteString(strings.TrimSpace(inner.String()))
-		buf.WriteString("</code></pre>")
-	case "taskList", "decisionList":
-		buf.WriteString("<ul>")
-		for _, item := range node.Content {
-			state := attrString(item, "state", "")
-			checkbox := "[ ] "
-			if state == "DONE" || state == "DECIDED" {
-				checkbox = "[x] "
-			}
-			buf.WriteString("<li>" + checkbox)
-			var inner strings.Builder
-			renderCellHTML(item, ctx, &inner)
-			buf.WriteString(strings.TrimSpace(inner.String()))
-			buf.WriteString("</li>")
-		}
-		buf.WriteString("</ul>")
-	default:
-		// For inline nodes and anything else, fall back to the markdown registry
-		// (inline text, marks, etc. render fine as markdown inside HTML)
-		walkChildren(node, ctx, buf)
+	if renderer, ok := htmlCellRenderers[node.Type]; ok {
+		renderer.render(node, ctx, buf)
+		return
 	}
+	// For inline nodes and anything else, fall back to the markdown registry
+	// (inline text, marks, etc. render fine as markdown inside HTML).
+	walkChildren(node, ctx, buf)
+}
+
+func renderHeadingHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
+	lvl := min(max(attrInt(node, "level", 1), 1), 6)
+	tag := "h" + itoa(lvl)
+	buf.WriteString("<" + tag + ">")
+	var inner strings.Builder
+	walkChildren(node, ctx, &inner)
+	buf.WriteString(strings.TrimSpace(inner.String()))
+	buf.WriteString("</" + tag + ">")
+}
+
+func renderParagraphHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
+	var inner strings.Builder
+	walkChildren(node, ctx, &inner)
+	text := strings.TrimSpace(inner.String())
+	if text != "" {
+		buf.WriteString("<p>" + text + "</p>")
+	}
+}
+
+func renderListHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
+	tag := "ul"
+	if node.Type == "orderedList" {
+		tag = "ol"
+	}
+	buf.WriteString("<" + tag + ">")
+	for _, item := range node.Content {
+		buf.WriteString("<li>")
+		var inner strings.Builder
+		renderCellHTML(item, ctx, &inner)
+		buf.WriteString(strings.TrimSpace(inner.String()))
+		buf.WriteString("</li>")
+	}
+	buf.WriteString("</" + tag + ">")
+}
+
+func renderCodeBlockHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
+	buf.WriteString("<pre><code>")
+	var inner strings.Builder
+	walkChildren(node, ctx, &inner)
+	buf.WriteString(strings.TrimSpace(inner.String()))
+	buf.WriteString("</code></pre>")
+}
+
+func renderTaskListHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
+	renderChecklistHTML(node, ctx, buf, "DONE")
+}
+
+func renderDecisionListHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
+	renderChecklistHTML(node, ctx, buf, "DECIDED")
+}
+
+func renderChecklistHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder, checkedState string) {
+	buf.WriteString("<ul>")
+	for _, item := range node.Content {
+		checkbox := "[ ] "
+		if attrString(item, "state", "") == checkedState {
+			checkbox = "[x] "
+		}
+		buf.WriteString("<li>" + checkbox)
+		var inner strings.Builder
+		renderCellHTML(item, ctx, &inner)
+		buf.WriteString(strings.TrimSpace(inner.String()))
+		buf.WriteString("</li>")
+	}
+	buf.WriteString("</ul>")
 }
 
 func itoa(n int) string {
