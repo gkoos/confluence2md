@@ -292,8 +292,14 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	// Fetch page by ID
 	fetchedPage, err := cs.client.GetPageByID(ctx, pageID, cs.seedSpaceKey)
 	if err != nil {
+		if confluence.IsNotFound(err) {
+			return deletedNodeResult(pageID, depth, "")
+		}
 		page.FetchError = fmt.Sprintf("fetch failed: %v", err)
 		return &NodeHandlerResult{Page: page, FetchError: page.FetchError}
+	}
+	if strings.EqualFold(strings.TrimSpace(fetchedPage.Status), "trashed") {
+		return deletedNodeResult(pageID, depth, fetchedPage.Title)
 	}
 
 	page.Title = fetchedPage.Title
@@ -435,40 +441,21 @@ func (cs *CrawlSession) processUpdatesNode(ctx context.Context, pageID int64, de
 	state, err := cs.client.GetPageState(ctx, pageID, cs.config.Attachments.Download)
 	if err != nil {
 		if confluence.IsNotFound(err) {
-			deletedPage := &CrawledPage{
-				ID:        pageID,
-				Deleted:   true,
-				CrawledAt: time.Now(),
-				Depth:     depth,
-			}
+			title := ""
 			if exists {
-				deletedPage.Title = previous.Title
+				title = previous.Title
 			}
-			return &NodeHandlerResult{
-				Page:    deletedPage,
-				Deleted: true,
-				Title:   deletedPage.Title,
-			}
+			return deletedNodeResult(pageID, depth, title)
 		}
 		// Conservative fallback: unknown state is treated as dirty.
 		return cs.processFullNode(ctx, pageID, depth)
 	}
 	if state != nil && strings.EqualFold(strings.TrimSpace(state.Status), "trashed") {
-		deletedPage := &CrawledPage{
-			ID:        pageID,
-			Title:     state.Title,
-			Deleted:   true,
-			CrawledAt: time.Now(),
-			Depth:     depth,
+		title := state.Title
+		if title == "" && exists {
+			title = previous.Title
 		}
-		if deletedPage.Title == "" && exists {
-			deletedPage.Title = previous.Title
-		}
-		return &NodeHandlerResult{
-			Page:    deletedPage,
-			Deleted: true,
-			Title:   deletedPage.Title,
-		}
+		return deletedNodeResult(pageID, depth, title)
 	}
 	if state == nil || strings.TrimSpace(state.Title) == "" {
 		// Conservative fallback for incomplete lightweight state.
@@ -518,6 +505,21 @@ func (cs *CrawlSession) processUpdatesNode(ctx context.Context, pageID int64, de
 		OutgoingLinks:        outgoing,
 		Title:                cleanPage.Title,
 		ExternalLinksSkipped: 0,
+	}
+}
+
+func deletedNodeResult(pageID int64, depth int, title string) *NodeHandlerResult {
+	page := &CrawledPage{
+		ID:        pageID,
+		Title:     title,
+		Deleted:   true,
+		CrawledAt: time.Now(),
+		Depth:     depth,
+	}
+	return &NodeHandlerResult{
+		Page:    page,
+		Deleted: true,
+		Title:   title,
 	}
 }
 

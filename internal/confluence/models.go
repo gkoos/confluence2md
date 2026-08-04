@@ -15,6 +15,7 @@ type PageData struct {
 type FullPageData struct {
 	ID        int64
 	Title     string
+	Status    string
 	CreatedAt string // ISO 8601 timestamp when page was created
 	AuthorID  string // Account ID of page creator
 	ParentID  string // Parent page ID in Confluence hierarchy

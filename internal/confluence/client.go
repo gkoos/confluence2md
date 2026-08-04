@@ -140,6 +140,7 @@ func (c *Client) GetPageByID(ctx context.Context, pageID int64, spaceKey string)
 	data := &FullPageData{
 		ID:        pageID,
 		Title:     page.Title,
+		Status:    strings.TrimSpace(page.Status),
 		CreatedAt: page.CreatedAt,
 		AuthorID:  page.AuthorID,
 		ParentID:  page.ParentID,
