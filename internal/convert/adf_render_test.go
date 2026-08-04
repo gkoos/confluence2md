@@ -118,6 +118,9 @@ func TestADFRender_HTMLTable_Colspan(t *testing.T) {
 	if !strings.Contains(got, `colspan="2"`) {
 		t.Fatalf("expected colspan attribute, got:\n%s", got)
 	}
+	if !strings.Contains(got, "<p>merged</p>") {
+		t.Fatalf("expected paragraph HTML inside colspan cell, got:\n%s", got)
+	}
 }
 
 func TestADFRender_HTMLTable_TaskList(t *testing.T) {
@@ -177,6 +180,98 @@ func TestADFRender_HTMLTable_DecisionList(t *testing.T) {
 	}
 	if !strings.Contains(got, "[ ] ") {
 		t.Fatalf("expected unchecked item for UNDECIDED, got:\n%s", got)
+	}
+}
+
+func TestHTMLCellRendererDescriptors(t *testing.T) {
+	expected := map[string]bool{
+		"paragraph":    false,
+		"heading":      true,
+		"codeBlock":    true,
+		"bulletList":   true,
+		"orderedList":  true,
+		"taskList":     true,
+		"decisionList": true,
+	}
+
+	if len(htmlCellRenderers) != len(expected) {
+		t.Fatalf("expected %d HTML cell renderers, got %d", len(expected), len(htmlCellRenderers))
+	}
+	for nodeType, requiresHTML := range expected {
+		renderer, ok := htmlCellRenderers[nodeType]
+		if !ok {
+			t.Fatalf("missing HTML cell renderer for %q", nodeType)
+		}
+		if renderer.render == nil {
+			t.Fatalf("HTML cell renderer for %q is nil", nodeType)
+		}
+		if renderer.requiresHTML != requiresHTML {
+			t.Fatalf("renderer %q requiresHTML = %v, want %v", nodeType, renderer.requiresHTML, requiresHTML)
+		}
+	}
+}
+
+func TestADFRender_HTMLTable_ComplexCellRenderers(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected string
+	}{
+		{
+			name:     "heading",
+			content:  `{"type":"heading","attrs":{"level":3},"content":[{"type":"text","text":"Section"}]}`,
+			expected: "<h3>Section</h3>",
+		},
+		{
+			name:     "code block",
+			content:  `{"type":"codeBlock","content":[{"type":"text","text":"value"}]}`,
+			expected: "<pre><code>value</code></pre>",
+		},
+		{
+			name:     "bullet list",
+			content:  `{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"item"}]}]}]}`,
+			expected: "<ul><li><p>item</p></li></ul>",
+		},
+		{
+			name:     "ordered list",
+			content:  `{"type":"orderedList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"item"}]}]}]}`,
+			expected: "<ol><li><p>item</p></li></ol>",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ToMarkdown(adf(
+				`{"type":"table","content":[{"type":"tableRow","content":[` +
+					`{"type":"tableCell","content":[` + tt.content + `]}` +
+					`]}]}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(got, "<table>") {
+				t.Fatalf("expected HTML table, got:\n%s", got)
+			}
+			if !strings.Contains(got, tt.expected) {
+				t.Fatalf("expected %q, got:\n%s", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestRenderNodeHTML_UnknownWrapperFallsBackToChildren(t *testing.T) {
+	node := ADFNode{
+		Type: "unknownBlock",
+		Content: []ADFNode{{
+			Type:    "paragraph",
+			Content: []ADFNode{{Type: "text", Text: "fallback"}},
+		}},
+	}
+	var buf strings.Builder
+
+	renderNodeHTML(node, &RenderContext{}, &buf)
+
+	if !strings.Contains(buf.String(), "fallback") {
+		t.Fatalf("expected fallback traversal to preserve child content, got %q", buf.String())
 	}
 }
 
