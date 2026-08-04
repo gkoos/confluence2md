@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2](https://github.com/gkoos/confluence2md/compare/v1.3.1...v1.3.2) (2026-08-04)
+
+
+### Code Refactoring
+
+* **convert:** unify HTML cell renderer dispatch ([#65](https://github.com/gkoos/confluence2md/issues/65)) ([e738afe](https://github.com/gkoos/confluence2md/commit/e738afee568b1029f61be0d812e8a62faca77c92))
+
 ## [1.3.1](https://github.com/gkoos/confluence2md/compare/v1.3.0...v1.3.1) (2026-08-03)
 
 
