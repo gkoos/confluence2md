@@ -181,6 +181,11 @@ func (cs *CrawlSession) Run(ctx context.Context, seedPageIDs []int64) (map[int64
 	close(cs.queue)
 	workerWg.Wait()
 
+	// If the context was cancelled or timed out, report that instead of success.
+	if err := ctx.Err(); err != nil {
+		return cs.results, err
+	}
+
 	if cs.enqueueDrops > 0 {
 		return cs.results, fmt.Errorf("crawl queue saturated: dropped %d discovered page(s); sample=%s", cs.enqueueDrops, cs.queueDropSampleSummary())
 	}
@@ -254,6 +259,7 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 			cs.results[item.pageID] = result.Page
 		}
 		cs.totalFetched++
+		fetched := cs.totalFetched
 		visited := len(cs.visited)
 		cs.mu.Unlock()
 
@@ -274,7 +280,7 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 			fmt.Printf("  [%s] DEL  %d — %s\n", depthPrefix, item.pageID, title)
 		} else {
 			fmt.Printf("  [%s] %3d/%-3d  %d — %s  (+%d links, ext-skip:%d, queue:%d)\n",
-				depthPrefix, cs.totalFetched, visited, item.pageID, title, childCount, result.ExternalLinksSkipped, len(cs.queue))
+				depthPrefix, fetched, visited, item.pageID, title, childCount, result.ExternalLinksSkipped, len(cs.queue))
 		}
 
 		cs.pendingWork.Done()
