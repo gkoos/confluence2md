@@ -512,6 +512,89 @@ func TestRun_FailsLoudlyWhenQueueSaturates(t *testing.T) {
 	}
 }
 
+func TestRun_ReturnsCancelledErrorWithPreCancelledContext(t *testing.T) {
+	cfg := &config.Config{
+		Crawl: config.CrawlConfig{
+			MaxDepth:     2,
+			Concurrency:  2,
+			RateLimitRPM: 60000,
+			QueueSize:    10000,
+		},
+	}
+	cs := NewCrawlSession(nil, cfg, "")
+
+	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
+		return &NodeHandlerResult{Title: "test", OutgoingLinks: []int64{}}
+	})
+	if err != nil {
+		t.Fatalf("SetNodeHandler returned error: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before Run is called
+
+	_, runErr := cs.Run(ctx, []int64{1, 2, 3})
+	if runErr == nil {
+		t.Fatal("expected cancellation error, got nil")
+	}
+	if runErr != context.Canceled {
+		t.Fatalf("expected context.Canceled, got: %v", runErr)
+	}
+}
+
+func TestRun_ReturnsCancelledErrorWhenCancelledMidCrawl(t *testing.T) {
+	cfg := &config.Config{
+		Crawl: config.CrawlConfig{
+			MaxDepth:     3,
+			Concurrency:  2,
+			RateLimitRPM: 60000,
+			QueueSize:    10000,
+		},
+	}
+	cs := NewCrawlSession(nil, cfg, "")
+
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+
+	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
+		// Signal that at least one node started processing, then block until released.
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		select {
+		case <-proceed:
+		case <-ctx.Done():
+		}
+		return &NodeHandlerResult{Title: "test", OutgoingLinks: []int64{}}
+	})
+	if err != nil {
+		t.Fatalf("SetNodeHandler returned error: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, runErr := cs.Run(ctx, []int64{1})
+		done <- runErr
+	}()
+
+	// Wait until the handler has started, then cancel.
+	<-started
+	cancel()
+	close(proceed)
+
+	runErr := <-done
+	if runErr == nil {
+		t.Fatal("expected cancellation error, got nil")
+	}
+	if runErr != context.Canceled {
+		t.Fatalf("expected context.Canceled, got: %v", runErr)
+	}
+}
+
 func TestRun_DoesNotFailWhenQueueHasCapacity(t *testing.T) {
 	cfg := &config.Config{
 		Crawl: config.CrawlConfig{
