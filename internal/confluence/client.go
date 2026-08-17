@@ -2,7 +2,6 @@ package confluence
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -258,28 +257,16 @@ func (c *Client) SearchPagesByCQL(ctx context.Context, cql string) ([]int64, err
 		params.Set("start", strconv.Itoa(start))
 
 		endpoint := fmt.Sprintf("%s/wiki/rest/api/search?%s", c.baseURL, params.Encode())
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		req, err := c.newAuthedRequest(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return nil, fmt.Errorf("build CQL search request: %w", err)
 		}
-		req.SetBasicAuth(c.username, c.token)
 		req.Header.Set("Accept", "application/json")
 
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("CQL search request: %w", err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("CQL search returned HTTP %d", resp.StatusCode)
-		}
-
 		var page searchPage
-		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("decode CQL search response: %w", err)
+		if err := c.doJSONRequest(req, &page); err != nil {
+			return nil, fmt.Errorf("CQL search: %w", err)
 		}
-		_ = resp.Body.Close()
 
 		for _, r := range page.Results {
 			id, err := strconv.ParseInt(r.Content.ID, 10, 64)

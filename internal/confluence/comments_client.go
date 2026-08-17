@@ -2,7 +2,7 @@ package confluence
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -77,20 +77,6 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 			return nil, fmt.Errorf("build v2 comments request: %w", err)
 		}
 
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("request v2 comments: %w", err)
-		}
-
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			body := readLimitedBody(resp.Body, 2048)
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusNotFound {
-				return comments, nil
-			}
-			return nil, fmt.Errorf("request v2 comments failed: status=%d body=%s", resp.StatusCode, body)
-		}
-
 		var payload struct {
 			Results []struct {
 				ID              string `json:"id"`
@@ -110,11 +96,13 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 			} `json:"_links"`
 		}
 
-		if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-			_ = resp.Body.Close()
-			return nil, fmt.Errorf("unmarshal v2 comments response: %w", err)
+		if err := c.doJSONRequest(req, &payload); err != nil {
+			var apiErr *apiError
+			if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+				return comments, nil
+			}
+			return nil, fmt.Errorf("request v2 comments: %w", err)
 		}
-		_ = resp.Body.Close()
 
 		for _, item := range payload.Results {
 			authorID := strings.TrimSpace(item.Version.AuthorID)
