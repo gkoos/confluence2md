@@ -48,10 +48,6 @@ func (c *Client) GetPageAttachments(ctx context.Context, pageID int64) ([]Attach
 	return all, nil
 }
 
-// DownloadAttachment downloads binary attachment content.
-// Discovery remains v2; binary retrieval follows the documented redirect endpoint.
-// maxBytes limits the response size; 0 means no limit.
-//
 // readWithLimit reads and validates the response body against a size limit.
 // Returns an error if the response size exceeds the limit (detected by reading
 // one extra byte and checking for EOF).
