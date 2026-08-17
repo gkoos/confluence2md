@@ -1,9 +1,118 @@
 package config
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// minimalValidYAML returns a config.yaml body that satisfies Validate() for
+// every field other than confluence.username and confluence.token, which are
+// supplied as parameters so tests can exercise the YAML/env precedence rules.
+func minimalValidYAML(username, token string) string {
+	return fmt.Sprintf(`
+confluence:
+  username: %q
+  token: %q
+crawl:
+  seeds:
+    - https://example.atlassian.net/wiki/spaces/ABC/pages/123/Example
+  max_depth: 1
+  concurrency: 2
+  rate_limit_rpm: 250
+  queue_size: 10000
+output:
+  dir: ./output
+retry:
+  max_attempts: 3
+  initial_backoff_ms: 1000
+`, username, token)
+}
+
+func writeTempConfig(t *testing.T, body string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	return path
+}
+
+func TestLoad_YAMLOnlyCredentials(t *testing.T) {
+	path := writeTempConfig(t, minimalValidYAML("yaml-user@example.com", "yaml-token"))
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected valid config, got: %v", err)
+	}
+	if cfg.Confluence.Username != "yaml-user@example.com" {
+		t.Fatalf("expected YAML username to be used, got: %s", cfg.Confluence.Username)
+	}
+	if cfg.Confluence.Token != "yaml-token" {
+		t.Fatalf("expected YAML token to be used, got: %s", cfg.Confluence.Token)
+	}
+}
+
+func TestLoad_EnvOnlyCredentials(t *testing.T) {
+	path := writeTempConfig(t, minimalValidYAML("", ""))
+	t.Setenv("CONFLUENCE_USERNAME", "env-user@example.com")
+	t.Setenv("CONFLUENCE_TOKEN", "env-token")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected valid config, got: %v", err)
+	}
+	if cfg.Confluence.Username != "env-user@example.com" {
+		t.Fatalf("expected env username to be used, got: %s", cfg.Confluence.Username)
+	}
+	if cfg.Confluence.Token != "env-token" {
+		t.Fatalf("expected env token to be used, got: %s", cfg.Confluence.Token)
+	}
+}
+
+func TestLoad_EnvOverridesYAMLCredentials(t *testing.T) {
+	path := writeTempConfig(t, minimalValidYAML("yaml-user@example.com", "yaml-token"))
+	t.Setenv("CONFLUENCE_USERNAME", "env-user@example.com")
+	t.Setenv("CONFLUENCE_TOKEN", "env-token")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("expected valid config, got: %v", err)
+	}
+	if cfg.Confluence.Username != "env-user@example.com" {
+		t.Fatalf("expected env username to override YAML, got: %s", cfg.Confluence.Username)
+	}
+	if cfg.Confluence.Token != "env-token" {
+		t.Fatalf("expected env token to override YAML, got: %s", cfg.Confluence.Token)
+	}
+}
+
+func TestLoad_MissingTokenFailsValidation(t *testing.T) {
+	path := writeTempConfig(t, minimalValidYAML("yaml-user@example.com", ""))
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error for missing token")
+	}
+	if !strings.Contains(err.Error(), "confluence.token is required") {
+		t.Fatalf("expected confluence.token validation error, got: %v", err)
+	}
+}
+
+func TestLoad_MissingUsernameFailsValidation(t *testing.T) {
+	path := writeTempConfig(t, minimalValidYAML("", "yaml-token"))
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected validation error for missing username")
+	}
+	if !strings.Contains(err.Error(), "confluence.username is required") {
+		t.Fatalf("expected confluence.username validation error, got: %v", err)
+	}
+}
 
 func TestValidate_RejectsNonPositiveConcurrencyAndRateLimit(t *testing.T) {
 	cfg := &Config{
