@@ -74,6 +74,14 @@ func bootstrapRun(mode, cfgFile string, dryRun bool) (*runContext, error) {
 		return nil, err
 	}
 
+	// Extract and validate seeds BEFORE clearing output directory.
+	// This ensures that a bad seed doesn't destroy existing output.
+	seedPageIDs, err := extractSeedPageIDs(client, cfg.Crawl.Seeds)
+	if err != nil {
+		return nil, fmt.Errorf("extract seed page IDs: %w", err)
+	}
+
+	// Now safe to clear output directory (seeds validated).
 	if shouldPrepareOutputDirectory(mode, dryRun) {
 		if err := clearDirectoryContents(cfg.Output.Dir); err != nil {
 			return nil, fmt.Errorf("prepare output directory for full crawl: %w", err)
@@ -92,14 +100,10 @@ func bootstrapRun(mode, cfgFile string, dryRun bool) (*runContext, error) {
 		cfg:                 cfg,
 		client:              client,
 		writer:              writer,
+		seedPageIDs:         seedPageIDs,
 		previousCheckpoint:  writer.LastSuccessfulCheckpoint(),
 		previousPages:       previousPages,
 		oldManagedArtifacts: managedArtifactSet(previousPages),
-	}
-
-	rc.seedPageIDs, err = extractSeedPageIDs(client, cfg.Crawl.Seeds)
-	if err != nil {
-		return nil, fmt.Errorf("extract seed page IDs: %w", err)
 	}
 	rc.writer.SetSeedPageIDs(int64SliceToStringIDs(rc.seedPageIDs))
 
