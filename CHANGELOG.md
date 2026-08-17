@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4](https://github.com/gkoos/confluence2md/compare/v1.3.3...v1.3.4) (2026-08-17)
+
+
+### Bug Fixes
+
+* **attachments:** enforce configured size limits and detect truncation ([#83](https://github.com/gkoos/confluence2md/issues/83)) ([3af6d80](https://github.com/gkoos/confluence2md/commit/3af6d80170bfc7a14e8335d170a33cf3265e2fb5)), closes [#71](https://github.com/gkoos/confluence2md/issues/71)
+* **attachments:** sanitize filenames to prevent path traversal ([#84](https://github.com/gkoos/confluence2md/issues/84)) ([31f80e1](https://github.com/gkoos/confluence2md/commit/31f80e14aa2ca3140e9ea37938e6c72a7291794b)), closes [#70](https://github.com/gkoos/confluence2md/issues/70)
+* **config:** support CONFLUENCE_TOKEN and CONFLUENCE_USERNAME env vars ([#86](https://github.com/gkoos/confluence2md/issues/86)) ([dc43717](https://github.com/gkoos/confluence2md/commit/dc43717c76c288417ad6cc31ae93f19cddf1f77f)), closes [#74](https://github.com/gkoos/confluence2md/issues/74)
+* **confluence:** avoid credential leak on cross-host comment pagination ([#85](https://github.com/gkoos/confluence2md/issues/85)) ([4838770](https://github.com/gkoos/confluence2md/commit/4838770fab6218ac4dbe1db386ab7402999c42ad)), closes [#73](https://github.com/gkoos/confluence2md/issues/73)
+* **crawler:** return cancellation error and fix totalFetched data race ([#81](https://github.com/gkoos/confluence2md/issues/81)) ([b504ab1](https://github.com/gkoos/confluence2md/commit/b504ab1d1ee94908fd5b66cd9676bf886fa54d47))
+
 ## [1.3.3](https://github.com/gkoos/confluence2md/compare/v1.3.2...v1.3.3) (2026-08-04)
 
 
