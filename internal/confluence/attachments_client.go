@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"net/http"
+	"strings"
 
 	model "github.com/ctreminiom/go-atlassian/v2/pkg/infra/models"
 )
@@ -48,9 +48,47 @@ func (c *Client) GetPageAttachments(ctx context.Context, pageID int64) ([]Attach
 	return all, nil
 }
 
+// readWithLimit reads and validates the response body against a size limit.
+// Returns an error if the response size exceeds the limit (detected by reading
+// one extra byte and checking for EOF).
+func readWithLimit(resp *http.Response, maxBytes int64) ([]byte, error) {
+	contentLen := resp.ContentLength
+	reader := io.Reader(resp.Body)
+
+	// If maxBytes is set, enforce it
+	if maxBytes > 0 {
+		// Check Content-Length header if available
+		if contentLen > maxBytes {
+			return nil, fmt.Errorf("response size %d exceeds limit of %d bytes", contentLen, maxBytes)
+		}
+
+		// Read up to maxBytes + 1 to detect truncation
+		limitReader := io.LimitReader(reader, maxBytes+1)
+		data, err := io.ReadAll(limitReader)
+		if err != nil {
+			return nil, fmt.Errorf("read attachment: %w", err)
+		}
+
+		// If we got more than maxBytes, it was truncated
+		if int64(len(data)) > maxBytes {
+			return nil, fmt.Errorf("attachment response truncated: received %d bytes but limit is %d", len(data), maxBytes)
+		}
+
+		return data, nil
+	}
+
+	// No limit, read everything
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("read attachment: %w", err)
+	}
+	return data, nil
+}
+
 // DownloadAttachment downloads binary attachment content.
 // Discovery remains v2; binary retrieval follows the documented redirect endpoint.
-func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentData) ([]byte, error) {
+// maxBytes limits the response size; 0 means no limit.
+func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentData, maxBytes int64) ([]byte, error) {
 	if strings.TrimSpace(attachment.PageID) == "" {
 		return nil, fmt.Errorf("download attachment %s: missing page ID", attachment.ID)
 	}
@@ -86,8 +124,9 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 			return nil, fmt.Errorf("attachment redirect missing Location header")
 		}
 	case http.StatusOK:
-		const maxBytes = 100 * 1024 * 1024
-		return io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+		// Direct 200 response (rare; usually redirects to CDN)
+		data, err := readWithLimit(resp, maxBytes)
+		return data, err
 	default:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return nil, fmt.Errorf("attachment redirect endpoint returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -119,6 +158,6 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 		return nil, fmt.Errorf("attachment file endpoint returned status %d: %s", fileResp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	const maxBytes = 100 * 1024 * 1024
-	return io.ReadAll(io.LimitReader(fileResp.Body, maxBytes))
+	data, err := readWithLimit(fileResp, maxBytes)
+	return data, err
 }
