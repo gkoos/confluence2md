@@ -68,7 +68,11 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 	comments := make([]CommentData, 0)
 
 	for {
-		req, err := c.newAuthedRequest(ctx, http.MethodGet, endpoint, nil)
+		// endpoint starts as a URL built from c.baseURL, but subsequent
+		// iterations may reassign it to an API-provided _links.next value,
+		// which could point cross-host. Only attach credentials when the
+		// endpoint still targets the Confluence host.
+		req, err := c.newConditionallyAuthedRequest(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return nil, fmt.Errorf("build v2 comments request: %w", err)
 		}
@@ -96,9 +100,9 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 					AuthorID  string `json:"authorId"`
 				} `json:"version"`
 				Body struct {
-				AtlasDocFormat struct {
-					Value string `json:"value"`
-				} `json:"atlas_doc_format"`
+					AtlasDocFormat struct {
+						Value string `json:"value"`
+					} `json:"atlas_doc_format"`
 				} `json:"body"`
 			} `json:"results"`
 			Links struct {

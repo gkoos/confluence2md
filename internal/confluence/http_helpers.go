@@ -18,6 +18,19 @@ func (c *Client) newAuthedRequest(ctx context.Context, method, endpoint string, 
 	return req, nil
 }
 
+// newConditionallyAuthedRequest builds a request for endpoint, attaching
+// Confluence Basic Auth only when endpoint targets the same host as
+// c.baseURL. Use this for any URL that originated from an API response
+// (redirect Location header, pagination _links.next, etc.) rather than
+// being built directly from c.baseURL, since such URLs may point cross-host
+// (e.g. a media CDN) and must not receive our credentials.
+func (c *Client) newConditionallyAuthedRequest(ctx context.Context, method, endpoint string, body io.Reader) (*http.Request, error) {
+	if sameHost(c.baseURL, endpoint) {
+		return c.newAuthedRequest(ctx, method, endpoint, body)
+	}
+	return http.NewRequestWithContext(ctx, method, endpoint, body)
+}
+
 func readLimitedBody(body io.Reader, limit int64) string {
 	data, _ := io.ReadAll(io.LimitReader(body, limit))
 	return strings.TrimSpace(string(data))

@@ -60,6 +60,120 @@ func TestFetchV2CommentsFromEndpoint_Paginates(t *testing.T) {
 	}
 }
 
+func TestFetchV2CommentsFromEndpoint_SameHostAbsoluteNextLink(t *testing.T) {
+	var ts *httptest.Server
+	router := http.NewServeMux()
+	router.HandleFunc("/wiki/api/v2/pages/123/footer-comments", func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			t.Errorf("expected Authorization header on same-host request to %s", r.URL.Path)
+		}
+
+		if r.URL.Query().Get("cursor") == "abc" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"results": [{
+					"id": "c2",
+					"parentCommentId": "",
+					"version": {"createdAt": "2026-02-13T10:01:00Z", "authorId": "a2"},
+					"body": {"atlas_doc_format": {"value": ""}}
+				}],
+				"_links": {}
+			}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		// Next link is an *absolute* same-host URL, not a relative path.
+		// ts is assigned before any request reaches this handler.
+		_, _ = w.Write([]byte(`{
+			"results": [{
+				"id": "c1",
+				"parentCommentId": "",
+				"version": {"createdAt": "2026-02-13T10:00:00Z", "authorId": "a1"},
+				"body": {"atlas_doc_format": {"value": ""}}
+			}],
+			"_links": {"next": "` + ts.URL + `/wiki/api/v2/pages/123/footer-comments?cursor=abc"}
+		}`))
+	})
+
+	ts = httptest.NewServer(router)
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	endpoint := ts.URL + "/wiki/api/v2/pages/123/footer-comments?limit=100&body-format=atlas_doc_format"
+	comments, err := client.fetchV2CommentsFromEndpoint(context.Background(), endpoint)
+	if err != nil {
+		t.Fatalf("fetch comments: %v", err)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(comments))
+	}
+}
+
+func TestFetchV2CommentsFromEndpoint_CrossHostNextLinkOmitsCredentials(t *testing.T) {
+	var crossHostServer *httptest.Server
+
+	crossHostRouter := http.NewServeMux()
+	crossHostRouter.HandleFunc("/footer-comments", func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			t.Errorf("expected no Authorization header on cross-host request, got %q", auth)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"results": [{
+				"id": "c2",
+				"parentCommentId": "",
+				"version": {"createdAt": "2026-02-13T10:01:00Z", "authorId": "a2"},
+				"body": {"atlas_doc_format": {"value": ""}}
+			}],
+			"_links": {}
+		}`))
+	})
+	crossHostServer = httptest.NewServer(crossHostRouter)
+	defer crossHostServer.Close()
+
+	router := http.NewServeMux()
+	router.HandleFunc("/wiki/api/v2/pages/123/footer-comments", func(w http.ResponseWriter, r *http.Request) {
+		if auth := r.Header.Get("Authorization"); auth == "" {
+			t.Errorf("expected Authorization header on first-page same-host request")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"results": [{
+				"id": "c1",
+				"parentCommentId": "",
+				"version": {"createdAt": "2026-02-13T10:00:00Z", "authorId": "a1"},
+				"body": {"atlas_doc_format": {"value": ""}}
+			}],
+			"_links": {"next": "` + crossHostServer.URL + `/footer-comments"}
+		}`))
+	})
+
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	endpoint := ts.URL + "/wiki/api/v2/pages/123/footer-comments?limit=100&body-format=atlas_doc_format"
+	comments, err := client.fetchV2CommentsFromEndpoint(context.Background(), endpoint)
+	if err != nil {
+		t.Fatalf("fetch comments: %v", err)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("expected 2 comments, got %d", len(comments))
+	}
+	if comments[0].ID != "c1" || comments[1].ID != "c2" {
+		t.Fatalf("unexpected IDs: %#v", comments)
+	}
+}
+
 func TestGetPageCommentsV2_FetchesChildrenAndDisplayNames(t *testing.T) {
 	router := http.NewServeMux()
 	router.HandleFunc("/wiki/api/v2/pages/644/footer-comments", func(w http.ResponseWriter, r *http.Request) {
