@@ -135,12 +135,7 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 	// Only re-send credentials if the redirect stayed on the Confluence host.
 	// Cross-host redirects (e.g. to a media CDN) use signed URLs and must not
 	// receive our Basic Auth, mirroring net/http's own redirect behaviour.
-	var fileReq *http.Request
-	if sameHost(c.baseURL, downloadURL) {
-		fileReq, err = c.newAuthedRequest(ctx, http.MethodGet, downloadURL, nil)
-	} else {
-		fileReq, err = http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
-	}
+	fileReq, err := c.newConditionallyAuthedRequest(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build attachment file request: %w", err)
 	}
