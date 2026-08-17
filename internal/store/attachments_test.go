@@ -224,3 +224,45 @@ func TestVerifyWithinDir_RejectsEscape(t *testing.T) {
 		t.Fatalf("unexpected error for path inside attachments dir: %v", err)
 	}
 }
+
+func TestDownloadPageAttachments_PartialFileCleanedUpOnError(t *testing.T) {
+	// Server returns a redirect, then the file endpoint errors mid-stream.
+	router := http.NewServeMux()
+	router.HandleFunc("/wiki/rest/api/content/p1/child/attachment/a1/download", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	client, err := confluence.NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	attachments := []confluence.AttachmentData{
+		{
+			ID:            "a1",
+			PageID:        "p1",
+			Filename:      "report.pdf",
+			MediaType:     "application/pdf",
+			FileSizeBytes: 1024,
+		},
+	}
+
+	dir := t.TempDir()
+	results := DownloadPageAttachments(t.Context(), dir, "p1", attachments, 0, client)
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Error == nil {
+		t.Fatal("expected download error, got nil")
+	}
+
+	// No partial file should be left behind.
+	attachDir := filepath.Join(dir, "attachments")
+	entries, _ := os.ReadDir(attachDir)
+	for _, e := range entries {
+		t.Errorf("unexpected file left in attachments dir after error: %q", e.Name())
+	}
+}

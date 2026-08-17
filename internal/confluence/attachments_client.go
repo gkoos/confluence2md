@@ -48,59 +48,52 @@ func (c *Client) GetPageAttachments(ctx context.Context, pageID int64) ([]Attach
 	return all, nil
 }
 
-// readWithLimit reads and validates the response body against a size limit.
-// Returns an error if the response size exceeds the limit (detected by reading
-// one extra byte and checking for EOF).
-func readWithLimit(resp *http.Response, maxBytes int64) ([]byte, error) {
-	contentLen := resp.ContentLength
-	reader := io.Reader(resp.Body)
+// copyWithLimit streams src into dst, enforcing an optional size limit.
+// When maxBytes > 0 and Content-Length already exceeds the limit the function
+// returns an error before reading any body bytes. If the response body itself
+// turns out to be larger than maxBytes an error is returned after the copy.
+func copyWithLimit(dst io.Writer, resp *http.Response, maxBytes int64) error {
+	if maxBytes > 0 && resp.ContentLength > maxBytes {
+		return fmt.Errorf("response size %d exceeds limit of %d bytes", resp.ContentLength, maxBytes)
+	}
 
-	// If maxBytes is set, enforce it
+	var n int64
+	var err error
 	if maxBytes > 0 {
-		// Check Content-Length header if available
-		if contentLen > maxBytes {
-			return nil, fmt.Errorf("response size %d exceeds limit of %d bytes", contentLen, maxBytes)
+		// Copy one extra byte so we can detect an oversize body even when
+		// Content-Length was absent or lied about.
+		n, err = io.CopyN(dst, resp.Body, maxBytes+1)
+		if err != nil && err != io.EOF {
+			return fmt.Errorf("read attachment: %w", err)
 		}
-
-		// Read up to maxBytes + 1 to detect truncation
-		limitReader := io.LimitReader(reader, maxBytes+1)
-		data, err := io.ReadAll(limitReader)
+		if n > maxBytes {
+			return fmt.Errorf("attachment response truncated: received more than %d bytes (limit)", maxBytes)
+		}
+	} else {
+		_, err = io.Copy(dst, resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("read attachment: %w", err)
+			return fmt.Errorf("read attachment: %w", err)
 		}
-
-		// If we got more than maxBytes, it was truncated
-		if int64(len(data)) > maxBytes {
-			return nil, fmt.Errorf("attachment response truncated: received %d bytes but limit is %d", len(data), maxBytes)
-		}
-
-		return data, nil
 	}
-
-	// No limit, read everything
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("read attachment: %w", err)
-	}
-	return data, nil
+	return nil
 }
 
-// DownloadAttachment downloads binary attachment content.
+// DownloadAttachment streams binary attachment content into dst.
 // Discovery remains v2; binary retrieval follows the documented redirect endpoint.
 // maxBytes limits the response size; 0 means no limit.
-func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentData, maxBytes int64) ([]byte, error) {
+func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentData, maxBytes int64, dst io.Writer) error {
 	if strings.TrimSpace(attachment.PageID) == "" {
-		return nil, fmt.Errorf("download attachment %s: missing page ID", attachment.ID)
+		return fmt.Errorf("download attachment %s: missing page ID", attachment.ID)
 	}
 	if strings.TrimSpace(attachment.ID) == "" {
-		return nil, fmt.Errorf("download attachment: missing attachment ID")
+		return fmt.Errorf("download attachment: missing attachment ID")
 	}
 
 	redirectEndpoint := fmt.Sprintf("%s/wiki/rest/api/content/%s/child/attachment/%s/download", c.baseURL, attachment.PageID, attachment.ID)
 
 	req, err := c.newAuthedRequest(ctx, http.MethodGet, redirectEndpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build attachment redirect request: %w", err)
+		return fmt.Errorf("build attachment redirect request: %w", err)
 	}
 
 	transport := c.httpClient.Transport
@@ -110,7 +103,7 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 
 	resp, err := transport.RoundTrip(req)
 	if err != nil {
-		return nil, fmt.Errorf("request attachment redirect URI: %w", err)
+		return fmt.Errorf("request attachment redirect URI: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -121,14 +114,13 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
 		downloadURL = resolveNextEndpoint(c.baseURL, resp.Header.Get("Location"))
 		if strings.TrimSpace(downloadURL) == "" {
-			return nil, fmt.Errorf("attachment redirect missing Location header")
+			return fmt.Errorf("attachment redirect missing Location header")
 		}
 	case http.StatusOK:
 		// Direct 200 response (rare; usually redirects to CDN)
-		data, err := readWithLimit(resp, maxBytes)
-		return data, err
+		return copyWithLimit(dst, resp, maxBytes)
 	default:
-		return nil, fmt.Errorf("attachment redirect endpoint: %w", readAPIError(resp))
+		return fmt.Errorf("attachment redirect endpoint: %w", readAPIError(resp))
 	}
 
 	// Only re-send credentials if the redirect stayed on the Confluence host.
@@ -136,21 +128,20 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 	// receive our Basic Auth, mirroring net/http's own redirect behaviour.
 	fileReq, err := c.newConditionallyAuthedRequest(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("build attachment file request: %w", err)
+		return fmt.Errorf("build attachment file request: %w", err)
 	}
 
 	fileResp, err := c.httpClient.Do(fileReq)
 	if err != nil {
-		return nil, fmt.Errorf("download attachment file: %w", err)
+		return fmt.Errorf("download attachment file: %w", err)
 	}
 	defer func() {
 		_ = fileResp.Body.Close()
 	}()
 
 	if fileResp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("attachment file endpoint: %w", readAPIError(fileResp))
+		return fmt.Errorf("attachment file endpoint: %w", readAPIError(fileResp))
 	}
 
-	data, err := readWithLimit(fileResp, maxBytes)
-	return data, err
+	return copyWithLimit(dst, fileResp, maxBytes)
 }
