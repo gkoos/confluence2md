@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5](https://github.com/gkoos/confluence2md/compare/v1.3.4...v1.3.5) (2026-08-17)
+
+
+### Bug Fixes
+
+* stream attachment downloads to disk instead of buffering in memory ([#92](https://github.com/gkoos/confluence2md/issues/92)) ([5e6f7bf](https://github.com/gkoos/confluence2md/commit/5e6f7bf575675c1cfd26816acfd1664f0e0c0ab3)), closes [#79](https://github.com/gkoos/confluence2md/issues/79)
+* validate seeds before clearing output directory ([#89](https://github.com/gkoos/confluence2md/issues/89)) ([dc94eaa](https://github.com/gkoos/confluence2md/commit/dc94eaafe92b9b4fbe33c3c3ddb6fcf6f7ea4a3d)), closes [#72](https://github.com/gkoos/confluence2md/issues/72)
+* write metadata.json atomically via temp file and rename ([#91](https://github.com/gkoos/confluence2md/issues/91)) ([df58626](https://github.com/gkoos/confluence2md/commit/df586266beea1ee62e9f8d56735214e874d7afbb)), closes [#76](https://github.com/gkoos/confluence2md/issues/76)
+
 ## [1.3.4](https://github.com/gkoos/confluence2md/compare/v1.3.3...v1.3.4) (2026-08-17)
 
 
