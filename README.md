@@ -80,9 +80,10 @@ Copy `config.example.yaml` to `config.yaml` and fill in the required values.
 ```yaml
 confluence:
   # Your Atlassian account email
+  # Can also be set via env var: CONFLUENCE_USERNAME (takes precedence over this value)
   username: you@example.com
   # Atlassian API token (https://id.atlassian.com/manage-profile/security/api-tokens)
-  # Can also be set via env var: CONFLUENCE_TOKEN
+  # Can also be set via env var: CONFLUENCE_TOKEN (takes precedence over this value)
   token: ""
 
 crawl:

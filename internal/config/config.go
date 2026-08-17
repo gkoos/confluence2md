@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -51,6 +52,10 @@ type PostCrawlHookConfig struct {
 }
 
 // Load reads the config file at the given path and returns a validated Config.
+//
+// CONFLUENCE_TOKEN and CONFLUENCE_USERNAME, if set to a non-empty value,
+// override confluence.token and confluence.username from the YAML file
+// respectively. This lets credentials be kept out of config.yaml entirely.
 func Load(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
@@ -62,6 +67,13 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
+	}
+
+	if envToken := os.Getenv("CONFLUENCE_TOKEN"); envToken != "" {
+		cfg.Confluence.Token = envToken
+	}
+	if envUsername := os.Getenv("CONFLUENCE_USERNAME"); envUsername != "" {
+		cfg.Confluence.Username = envUsername
 	}
 
 	if err := cfg.Validate(); err != nil {
