@@ -462,3 +462,32 @@ func TestNewWriter_LoadMetadataRejectsEmptySeedPageID(t *testing.T) {
 		t.Fatalf("expected seed_page_ids validation error, got: %v", err)
 	}
 }
+
+func TestSaveMetadata_AtomicWrite(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWriter(dir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+
+	if err := w.SaveMetadata(); err != nil {
+		t.Fatalf("SaveMetadata returned error: %v", err)
+	}
+
+	// The final file must exist and be valid JSON.
+	metaPath := filepath.Join(dir, "metadata.json")
+	if _, err := os.Stat(metaPath); err != nil {
+		t.Fatalf("metadata.json not found after SaveMetadata: %v", err)
+	}
+
+	// No leftover temp file.
+	tmpPath := metaPath + ".tmp"
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Fatalf("metadata.json.tmp should not exist after successful SaveMetadata")
+	}
+
+	// The written file must be loadable by a fresh Writer.
+	if _, err := NewWriter(dir); err != nil {
+		t.Fatalf("NewWriter failed to reload metadata written by SaveMetadata: %v", err)
+	}
+}
