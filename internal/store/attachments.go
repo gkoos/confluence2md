@@ -69,13 +69,6 @@ func DownloadPageAttachments(
 			continue
 		}
 
-		data, err := client.DownloadAttachment(ctx, a, maxBytes)
-		if err != nil {
-			result.Error = fmt.Errorf("download %q: %w", a.Filename, err)
-			results = append(results, result)
-			continue
-		}
-
 		savedFilename := PageAttachmentFilename(pageID, a.Filename)
 		destPath := filepath.Join(attachDir, savedFilename)
 		if err := verifyWithinDir(attachDir, destPath); err != nil {
@@ -83,8 +76,19 @@ func DownloadPageAttachments(
 			results = append(results, result)
 			continue
 		}
-		if err := os.WriteFile(destPath, data, 0644); err != nil {
-			result.Error = fmt.Errorf("write %q: %w", savedFilename, err)
+
+		f, err := os.Create(destPath)
+		if err != nil {
+			result.Error = fmt.Errorf("create %q: %w", savedFilename, err)
+			results = append(results, result)
+			continue
+		}
+
+		downloadErr := client.DownloadAttachment(ctx, a, maxBytes, f)
+		_ = f.Close()
+		if downloadErr != nil {
+			_ = os.Remove(destPath)
+			result.Error = fmt.Errorf("download %q: %w", a.Filename, downloadErr)
 			results = append(results, result)
 			continue
 		}

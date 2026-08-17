@@ -42,13 +42,13 @@ func TestDownloadAttachment_BelowLimit(t *testing.T) {
 	}
 
 	maxBytes := int64(100 * 1024 * 1024) // 100 MiB limit
-	data, err := client.DownloadAttachment(context.Background(), attachment, maxBytes)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := client.DownloadAttachment(context.Background(), attachment, maxBytes, &buf); err != nil {
 		t.Fatalf("download attachment: %v", err)
 	}
 
-	if len(data) != len(fileContent) {
-		t.Fatalf("expected %d bytes, got %d", len(fileContent), len(data))
+	if buf.Len() != len(fileContent) {
+		t.Fatalf("expected %d bytes, got %d", len(fileContent), buf.Len())
 	}
 }
 
@@ -81,13 +81,13 @@ func TestDownloadAttachment_AtLimit(t *testing.T) {
 	}
 
 	maxBytes := int64(100 * 1024 * 1024) // 100 MiB limit
-	data, err := client.DownloadAttachment(context.Background(), attachment, maxBytes)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := client.DownloadAttachment(context.Background(), attachment, maxBytes, &buf); err != nil {
 		t.Fatalf("download attachment: %v", err)
 	}
 
-	if len(data) != len(fileContent) {
-		t.Fatalf("expected %d bytes, got %d", len(fileContent), len(data))
+	if buf.Len() != len(fileContent) {
+		t.Fatalf("expected %d bytes, got %d", len(fileContent), buf.Len())
 	}
 }
 
@@ -121,7 +121,8 @@ func TestDownloadAttachment_AboveLimit(t *testing.T) {
 	}
 
 	maxBytes := int64(100 * 1024 * 1024) // 100 MiB limit
-	_, err = client.DownloadAttachment(context.Background(), attachment, maxBytes)
+	var buf bytes.Buffer
+	err = client.DownloadAttachment(context.Background(), attachment, maxBytes, &buf)
 	if err == nil {
 		t.Fatal("expected error for file above limit, got nil")
 	}
@@ -160,13 +161,13 @@ func TestDownloadAttachment_UnlimitedDownload(t *testing.T) {
 	}
 
 	maxBytes := int64(0) // No limit
-	data, err := client.DownloadAttachment(context.Background(), attachment, maxBytes)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := client.DownloadAttachment(context.Background(), attachment, maxBytes, &buf); err != nil {
 		t.Fatalf("download attachment: %v", err)
 	}
 
-	if len(data) != len(fileContent) {
-		t.Fatalf("expected %d bytes, got %d", len(fileContent), len(data))
+	if buf.Len() != len(fileContent) {
+		t.Fatalf("expected %d bytes, got %d", len(fileContent), buf.Len())
 	}
 }
 
@@ -200,7 +201,8 @@ func TestDownloadAttachment_ContentLengthExceedsLimit(t *testing.T) {
 	}
 
 	maxBytes := int64(100 * 1024 * 1024) // 100 MiB limit
-	_, err = client.DownloadAttachment(context.Background(), attachment, maxBytes)
+	var buf bytes.Buffer
+	err = client.DownloadAttachment(context.Background(), attachment, maxBytes, &buf)
 	if err == nil {
 		t.Fatal("expected error for Content-Length exceeding limit, got nil")
 	}
@@ -210,27 +212,8 @@ func TestDownloadAttachment_ContentLengthExceedsLimit(t *testing.T) {
 	}
 }
 
-// TestReadWithLimit_NoLimitReadsAll verifies that maxBytes=0 reads all data.
-func TestReadWithLimit_NoLimitReadsAll(t *testing.T) {
-	data := bytes.Repeat([]byte("x"), 1024*1024)
-	resp := &http.Response{
-		StatusCode:    http.StatusOK,
-		ContentLength: int64(len(data)),
-		Body:          io.NopCloser(bytes.NewReader(data)),
-	}
-
-	result, err := readWithLimit(resp, 0)
-	if err != nil {
-		t.Fatalf("readWithLimit: %v", err)
-	}
-
-	if len(result) != len(data) {
-		t.Fatalf("expected %d bytes, got %d", len(data), len(result))
-	}
-}
-
-// TestReadWithLimit_ExactLimitSucceeds verifies that reading exactly to the limit succeeds.
-func TestReadWithLimit_ExactLimitSucceeds(t *testing.T) {
+// TestCopyWithLimit_ExactLimitSucceeds verifies that reading exactly to the limit succeeds.
+func TestCopyWithLimit_ExactLimitSucceeds(t *testing.T) {
 	data := bytes.Repeat([]byte("x"), 100)
 	resp := &http.Response{
 		StatusCode:    http.StatusOK,
@@ -238,18 +221,18 @@ func TestReadWithLimit_ExactLimitSucceeds(t *testing.T) {
 		Body:          io.NopCloser(bytes.NewReader(data)),
 	}
 
-	result, err := readWithLimit(resp, int64(len(data)))
-	if err != nil {
-		t.Fatalf("readWithLimit: %v", err)
+	var buf bytes.Buffer
+	if err := copyWithLimit(&buf, resp, int64(len(data))); err != nil {
+		t.Fatalf("copyWithLimit: %v", err)
 	}
 
-	if len(result) != len(data) {
-		t.Fatalf("expected %d bytes, got %d", len(data), len(result))
+	if buf.Len() != len(data) {
+		t.Fatalf("expected %d bytes, got %d", len(data), buf.Len())
 	}
 }
 
-// TestReadWithLimit_DetectsTruncation verifies that exceeding the limit is detected.
-func TestReadWithLimit_DetectsTruncation(t *testing.T) {
+// TestCopyWithLimit_DetectsTruncation verifies that exceeding the limit is detected.
+func TestCopyWithLimit_DetectsTruncation(t *testing.T) {
 	data := bytes.Repeat([]byte("x"), 110)
 	resp := &http.Response{
 		StatusCode:    http.StatusOK,
@@ -257,7 +240,8 @@ func TestReadWithLimit_DetectsTruncation(t *testing.T) {
 		Body:          io.NopCloser(bytes.NewReader(data)),
 	}
 
-	_, err := readWithLimit(resp, int64(100))
+	var buf bytes.Buffer
+	err := copyWithLimit(&buf, resp, int64(100))
 	if err == nil {
 		t.Fatal("expected error for truncation, got nil")
 	}
