@@ -69,7 +69,7 @@ func DownloadPageAttachments(
 			continue
 		}
 
-		data, err := client.DownloadAttachment(ctx, a)
+		data, err := client.DownloadAttachment(ctx, a, maxBytes)
 		if err != nil {
 			result.Error = fmt.Errorf("download %q: %w", a.Filename, err)
 			results = append(results, result)
