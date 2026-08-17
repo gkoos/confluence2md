@@ -206,16 +206,25 @@ func (w *Writer) GetSeedPageIDs() []string {
 	return out
 }
 
-// SaveMetadata writes the metadata.json file to disk.
+// SaveMetadata writes the metadata.json file to disk atomically using a
+// write-to-temp-then-rename pattern so that a crash or interruption mid-write
+// never leaves a corrupt or truncated metadata.json behind.
 func (w *Writer) SaveMetadata() error {
 	metaPath := filepath.Join(w.outputDir, "metadata.json")
+	tmpPath := metaPath + ".tmp"
+
 	data, err := json.MarshalIndent(w.metadata, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(metaPath, data, 0644); err != nil {
-		return fmt.Errorf("write metadata.json: %w", err)
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return fmt.Errorf("write metadata.json.tmp: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, metaPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("rename metadata.json.tmp to metadata.json: %w", err)
 	}
 
 	return nil
