@@ -2,7 +2,6 @@ package confluence
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -58,29 +57,9 @@ func (c *Client) GetUserDisplayName(ctx context.Context, accountID string) strin
 
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		fmt.Printf("Warning: failed to fetch user %s: %v\n", accountID, err)
-		globalUserCache.mu.Lock()
-		globalUserCache.names[accountID] = ""
-		globalUserCache.mu.Unlock()
-		return ""
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != 200 {
-		fmt.Printf("Warning: failed to fetch user %s (status %d)\n", accountID, resp.StatusCode)
-		globalUserCache.mu.Lock()
-		globalUserCache.names[accountID] = ""
-		globalUserCache.mu.Unlock()
-		return ""
-	}
-
 	var user userResponse
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
-		fmt.Printf("Warning: failed to decode user response for %s: %v\n", accountID, err)
+	if err := c.doJSONRequest(req, &user); err != nil {
+		fmt.Printf("Warning: failed to fetch user %s: %v\n", accountID, err)
 		globalUserCache.mu.Lock()
 		globalUserCache.names[accountID] = ""
 		globalUserCache.mu.Unlock()

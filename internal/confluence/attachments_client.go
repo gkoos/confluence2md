@@ -128,8 +128,7 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 		data, err := readWithLimit(resp, maxBytes)
 		return data, err
 	default:
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("attachment redirect endpoint returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("attachment redirect endpoint: %w", readAPIError(resp))
 	}
 
 	// Only re-send credentials if the redirect stayed on the Confluence host.
@@ -149,8 +148,7 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 	}()
 
 	if fileResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(fileResp.Body, 1024))
-		return nil, fmt.Errorf("attachment file endpoint returned status %d: %s", fileResp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("attachment file endpoint: %w", readAPIError(fileResp))
 	}
 
 	data, err := readWithLimit(fileResp, maxBytes)
