@@ -24,7 +24,7 @@ func TestDownloadAttachment_BelowLimit(t *testing.T) {
 	router.HandleFunc("/file.bin", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fileContent)))
-		w.Write(fileContent)
+		_, _ = w.Write(fileContent)
 	})
 
 	ts := httptest.NewServer(router)
@@ -63,7 +63,7 @@ func TestDownloadAttachment_AtLimit(t *testing.T) {
 	router.HandleFunc("/file.bin", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fileContent)))
-		w.Write(fileContent)
+		_, _ = w.Write(fileContent)
 	})
 
 	ts := httptest.NewServer(router)
@@ -103,7 +103,7 @@ func TestDownloadAttachment_AboveLimit(t *testing.T) {
 	router.HandleFunc("/file.bin", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fileContent)))
-		w.Write(fileContent)
+		_, _ = w.Write(fileContent)
 	})
 
 	ts := httptest.NewServer(router)
@@ -142,7 +142,7 @@ func TestDownloadAttachment_UnlimitedDownload(t *testing.T) {
 	router.HandleFunc("/file.bin", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(fileContent)))
-		w.Write(fileContent)
+		_, _ = w.Write(fileContent)
 	})
 
 	ts := httptest.NewServer(router)
@@ -182,7 +182,7 @@ func TestDownloadAttachment_ContentLengthExceedsLimit(t *testing.T) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		// Lie about content length: claim 110 MiB when we only have 50 MiB
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", 110*1024*1024))
-		w.Write(fileContent)
+		_, _ = w.Write(fileContent)
 	})
 
 	ts := httptest.NewServer(router)
