@@ -158,3 +158,105 @@ Examples:
 This matches the use case: a bulk export tool where a rendering imperfection on one page is far less harmful than aborting an entire crawl of hundreds of pages.
 
 Infrastructure failures (bad credentials, network unreachable at start, invalid config) fail fast and loudly before any output is written.
+
+---
+
+## Scoped API tokens: the site-URL / API-base split (feature 001-scoped-api-tokens)
+
+Atlassian's "API tokens with scopes" are not served from a Confluence site's
+own domain (`https://org.atlassian.net`); they are served from a central
+gateway (`https://api.atlassian.com/ex/confluence/<cloud-id>`), with a basic-auth
+credential mechanism otherwise identical to classic tokens. Before this
+feature, the tool derived a single base URL from the first seed and used it
+both for making requests and for constructing artifact-facing values —
+conflating two concepts that must not be conflated:
+
+- **`SiteURL()`** — the tenant domain. Used only for values that land in
+  emitted artifacts: the canonical `webui` URL in front matter and
+  `metadata.json`, link-scope host matching (`internal/links/extractor.go`),
+  and link absolutisation (`cmd/crawler/link_utils.go`). This value MUST NOT
+  vary with credential style, because output must be byte-identical between
+  a classic and a scoped token given the same source state (FR-013, SC-006,
+  constitution Principle I).
+- **`APIBaseURL()`** — the request target. Identical to `SiteURL()` in
+  classic mode; the Atlassian gateway base in scoped mode.
+
+`confluence.Client` stores both values separately (`siteURL`, `apiBaseURL`)
+and every call site was audited to use the correct one: `Links.Webui`
+construction and link-scope/absolutisation code use the site URL; every
+hand-built endpoint (CQL search, comments, attachments, user lookup) and the
+`go-atlassian` client construction use the API base. This is what makes
+output determinism hold by construction rather than by testing discipline
+alone (though it is also covered by tests — see
+`internal/confluence/determinism_test.go` and
+`internal/links/extractor_test.go`).
+
+Credential style (`confluence.auth_mode`: `auto` | `classic` | `scoped`) is
+resolved once at startup by probing — fetching the first configured seed
+page through a candidate base — rather than by inspecting the token, because
+classic and scoped Atlassian API tokens carry the same `ATATT` prefix with no
+documented, stable format difference to branch on (research R2). This probe
+replaced the old health check, which called the space-listing endpoint
+(`Space.Bulk`) — the only caller of that endpoint in the codebase, and a
+scope the crawl never otherwise needs. Probing with the same request the
+crawl's first real fetch makes means a passing validation reliably predicts
+the crawl can begin, and removes the space-read scope from the required set.
+
+### Credential-host allowlist (FR-021)
+
+Basic Auth credentials are attached only to hosts derived from the two known
+bases (API base host, plus the site host whenever it differs — i.e. in
+scoped mode), computed once at client construction
+(`credentialHostAllowlist` in `internal/confluence/http_helpers.go`). An
+unparseable or unlisted destination — including a redirect `Location` — never
+receives credentials. This widens the previous single-host equality check
+(`sameHost`) into an allowlist without weakening its fail-closed property:
+membership is derived only from the two statically-known bases, never from a
+response-supplied host, so a later refactor cannot silently broaden it.
+
+### Attachment redirects under the gateway (research R6) — closed
+
+**Resolved 2026-09-04, verified live.** `DownloadAttachment` requests a
+redirect endpoint and re-sends Basic Auth only if the `Location` target's
+host is on the credential allowlist. This was implemented as a deliberately
+conservative, fail-closed default (see below) because Atlassian does not
+document the redirect's shape under the gateway, and no live scoped token was
+available while writing the code.
+
+An operator (the project's user) then ran two real `--mode updates` crawls
+against `clevermaps-internal.atlassian.net` with a genuinely scoped API
+token, resolved to `auth_mode: scoped` (cloud ID
+`92100ba9-133b-441d-8426-0f695380bc3a`):
+
+- First run, no attachment changes: `Attachments downloaded/reused: 0/891` —
+  all 891 already on disk from a prior crawl, correctly skipped.
+- Second run, after adding one attachment to a page: `Attachments
+  downloaded/reused: 7/885` — 7 new files fetched and written, `0` errors,
+  `123/123` pages written successfully. The 7 files were confirmed on disk
+  with real, non-trivial sizes (36 KB–3.6 MB, matching the source images),
+  not empty placeholders.
+
+**Finding**: the download path works end-to-end through the gateway with a
+scoped token, with zero code changes needed beyond what was already
+implemented. Because the credential-resend check is fail-closed (FR-021) —
+an unlisted or unparseable redirect host receives no `Authorization` header —
+a successful authenticated download is itself proof the redirect's host
+landed on the allowlist (the site host, included precisely for this case).
+Had Atlassian's `Location` pointed anywhere else, the download would have
+failed outright (safe failure) rather than silently leaking credentials, so
+this result rules out the credential-leak risk this gate existed to catch,
+even without a raw HTTP trace of the `Location` header's exact host or
+absolute/relative form.
+
+**Not captured**: the literal `Location` header value (no packet capture was
+taken during the live run), so whether it is absolute or points at the
+gateway host itself, the tenant host, or a signed CDN URL specifically,
+remains unrecorded. This is now a curiosity, not a risk — the allowlist and
+fail-closed behaviour make the answer self-verifying on every run: if it ever
+changes, attachments start failing (safe, per FR-011) rather than leaking
+credentials, and that failure would be visible in the run summary's
+attachment error count.
+
+**Status**: tasks.md T024 and T025 marked complete. No fallback to a
+site-domain-only attachment path is needed — the gateway path works as
+implemented.

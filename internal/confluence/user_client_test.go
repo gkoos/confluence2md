@@ -13,7 +13,7 @@ import (
 // config so tests run fast and don't retry on error responses.
 func newTestUserClient(t *testing.T, ts *httptest.Server) *Client {
 	t.Helper()
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}

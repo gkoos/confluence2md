@@ -45,7 +45,7 @@ func (c *Client) GetUserDisplayName(ctx context.Context, accountID string) strin
 	// Fetch from API using direct HTTP call (consistent with comments_client.go pattern)
 	// Confluence v1 REST API: GET /wiki/rest/api/user?accountId={accountId}
 	// Note: v2 API does not have a user lookup endpoint, use v1 instead
-	endpoint := fmt.Sprintf("%s/wiki/rest/api/user?accountId=%s", c.baseURL, url.QueryEscape(accountID))
+	endpoint := fmt.Sprintf("%s/wiki/rest/api/user?accountId=%s", c.apiBaseURL, url.QueryEscape(accountID))
 	req, err := c.newAuthedRequest(ctx, "GET", endpoint, nil)
 	if err != nil {
 		fmt.Printf("Warning: failed to create user request for %s: %v\n", accountID, err)

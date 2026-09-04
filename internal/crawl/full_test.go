@@ -253,7 +253,7 @@ func TestProcessUpdatesNodeTreatsNotFoundAsDeleted(t *testing.T) {
 		},
 		Retry: config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1},
 	}
-	client, err := confluence.NewClient(cfg.BaseURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
+	client, err := confluence.NewClient(cfg.SiteURL(), cfg.SiteURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
 	if err != nil {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestProcessUpdatesNodeTreatsTrashedStatusAsDeleted(t *testing.T) {
 		},
 		Retry: config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1},
 	}
-	client, err := confluence.NewClient(cfg.BaseURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
+	client, err := confluence.NewClient(cfg.SiteURL(), cfg.SiteURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
 	if err != nil {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestProcessUpdatesNodeFallsBackToFullFetchForTransientError(t *testing.T) {
 		},
 		Retry: config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1},
 	}
-	client, err := confluence.NewClient(cfg.BaseURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
+	client, err := confluence.NewClient(cfg.SiteURL(), cfg.SiteURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
 	if err != nil {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
@@ -417,6 +417,32 @@ func TestProcessFullNodeKeepsTransientFailureAsError(t *testing.T) {
 	}
 }
 
+// TestProcessFullNodeReportsPermissionDeniedAsNonAbortingError covers
+// FR-011 (US2 acceptance scenario 3): a page the token cannot read must be
+// reported as permission-denied and counted like any other per-page
+// failure, without aborting the crawl. It must also carry the FR-009/FR-010
+// classification message, not a generic failure string.
+func TestProcessFullNodeReportsPermissionDeniedAsNonAbortingError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"message":"insufficient permissions"}`, http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	cs := newTestCrawlSession(t, server.URL)
+	cs.client.SetMode("scoped") // exercise the missing-scope classification path (FR-009/FR-010)
+	result := cs.processFullNode(context.Background(), 42, 2)
+
+	if result == nil || result.Deleted {
+		t.Fatalf("expected a non-deleted error result for a 403, got %#v", result)
+	}
+	if result.FetchError == "" || result.Page == nil || result.Page.FetchError == "" {
+		t.Fatalf("expected the 403 to be reported as a page fetch error, got %#v", result)
+	}
+	if !strings.Contains(result.FetchError, "permission") {
+		t.Fatalf("expected the failure message to describe a permission problem, got: %s", result.FetchError)
+	}
+}
+
 func TestProcessUpdatesNodeHandlesDeletionBetweenStateAndFullFetch(t *testing.T) {
 	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -454,7 +480,7 @@ func newTestCrawlSession(t *testing.T, serverURL string) *CrawlSession {
 		},
 		Retry: config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1},
 	}
-	client, err := confluence.NewClient(cfg.BaseURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
+	client, err := confluence.NewClient(cfg.SiteURL(), cfg.SiteURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
 	if err != nil {
 		t.Fatalf("NewClient returned error: %v", err)
 	}

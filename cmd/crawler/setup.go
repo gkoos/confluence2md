@@ -16,13 +16,23 @@ import (
 
 func printConfigSummary(cfg *config.Config) {
 	fmt.Println("Config loaded successfully")
-	fmt.Printf("  Base URL:    %s\n", cfg.BaseURL())
+	fmt.Printf("  Site URL:    %s\n", cfg.SiteURL())
 	fmt.Printf("  Username:    %s\n", cfg.Confluence.Username)
 	fmt.Printf("  Seeds:       %v\n", cfg.Crawl.Seeds)
 	fmt.Printf("  Max depth:      %d\n", cfg.Crawl.MaxDepth)
 	fmt.Printf("  Concurrency:    %d\n", cfg.Crawl.Concurrency)
 	fmt.Printf("  Follow children: %v\n", cfg.Crawl.FollowChildren)
 	fmt.Printf("  Output dir:     %s\n", cfg.Output.Dir)
+}
+
+// printCredentialStyle reports the resolved credential style in the
+// pre-crawl summary (FR-005), including the resolved cloud ID in scoped
+// mode so an operator can cross-check it, but never any credential material.
+func printCredentialStyle(auth *confluenceclient.AuthResolution) {
+	fmt.Printf("  Credential style: %s\n", auth.Mode)
+	if auth.Mode == config.AuthModeScoped {
+		fmt.Printf("  Cloud ID:         %s\n", auth.CloudID)
+	}
 }
 
 func clearDirectoryContents(dir string) error {
@@ -50,26 +60,25 @@ func clearDirectoryContents(dir string) error {
 	return nil
 }
 
-func newConfluenceClient(cfg *config.Config) (*confluenceclient.Client, error) {
-	client, err := confluenceclient.NewClient(cfg.BaseURL(), cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)
-	if err != nil {
-		return nil, fmt.Errorf("creating Confluence client: %w", err)
-	}
-	return client, nil
-}
+// resolveConfluenceAuth determines the credential style (auto/classic/scoped)
+// and returns a Client already validated against the same endpoint the
+// crawl's first real request will use (FR-008, SC-002). This replaces the
+// old two-step "construct client, then Ping" flow: mode resolution *is* the
+// validation probe now, since which base to construct the client against is
+// exactly what's being resolved.
+func resolveConfluenceAuth(cfg *config.Config) (*confluenceclient.AuthResolution, error) {
+	fmt.Println("\nResolving Confluence credential style and checking API access...")
 
-func verifyConfluenceAccess(client *confluenceclient.Client) error {
-	fmt.Println("\nChecking Confluence API access...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := client.Ping(ctx); err != nil {
-		return err
+	auth, err := confluenceclient.ResolveAuth(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("confluence credential validation failed: %w", err)
 	}
 
 	fmt.Println("Confluence API access check passed.")
-	return nil
+	return auth, nil
 }
 
 // extractSpaceKeyFromSeed extracts the alphanumeric space key (e.g., "SFD", "DS")

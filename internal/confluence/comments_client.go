@@ -11,7 +11,7 @@ import (
 
 // GetPageComments fetches comments and looks up author display names.
 func (c *Client) GetPageComments(ctx context.Context, pageID int64) ([]CommentData, error) {
-	rootEndpoint := fmt.Sprintf("%s/wiki/api/v2/pages/%d/footer-comments?limit=100&body-format=atlas_doc_format", c.baseURL, pageID)
+	rootEndpoint := fmt.Sprintf("%s/wiki/api/v2/pages/%d/footer-comments?limit=100&body-format=atlas_doc_format", c.apiBaseURL, pageID)
 
 	comments, err := c.fetchV2CommentsFromEndpoint(ctx, rootEndpoint)
 	if err != nil {
@@ -36,7 +36,7 @@ func (c *Client) GetPageComments(ctx context.Context, pageID int64) ([]CommentDa
 		}
 		visited[commentID] = true
 
-		childrenEndpoint := fmt.Sprintf("%s/wiki/api/v2/footer-comments/%s/children?limit=100&body-format=atlas_doc_format", c.baseURL, url.PathEscape(commentID))
+		childrenEndpoint := fmt.Sprintf("%s/wiki/api/v2/footer-comments/%s/children?limit=100&body-format=atlas_doc_format", c.apiBaseURL, url.PathEscape(commentID))
 		children, err := c.fetchV2CommentsFromEndpoint(ctx, childrenEndpoint)
 		if err != nil {
 			return nil, err
@@ -68,7 +68,7 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 	comments := make([]CommentData, 0)
 
 	for {
-		// endpoint starts as a URL built from c.baseURL, but subsequent
+		// endpoint starts as a URL built from c.apiBaseURL, but subsequent
 		// iterations may reassign it to an API-provided _links.next value,
 		// which could point cross-host. Only attach credentials when the
 		// endpoint still targets the Confluence host.
@@ -119,7 +119,7 @@ func (c *Client) fetchV2CommentsFromEndpoint(ctx context.Context, endpoint strin
 			})
 		}
 
-		next := resolveNextEndpoint(c.baseURL, payload.Links.Next)
+		next := resolveNextEndpoint(c.apiBaseURL, payload.Links.Next)
 		if next == "" {
 			break
 		}

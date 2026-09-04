@@ -65,14 +65,12 @@ func bootstrapRun(mode, cfgFile string, dryRun bool) (*runContext, error) {
 
 	printConfigSummary(cfg)
 
-	client, err := newConfluenceClient(cfg)
+	auth, err := resolveConfluenceAuth(cfg)
 	if err != nil {
 		return nil, err
 	}
-
-	if err := verifyConfluenceAccess(client); err != nil {
-		return nil, err
-	}
+	printCredentialStyle(auth)
+	client := auth.Client
 
 	// Extract and validate seeds BEFORE clearing output directory.
 	// This ensures that a bad seed doesn't destroy existing output.
@@ -263,7 +261,7 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 
 	if !rc.dryRun {
 		var err error
-		markdown, err = absolutizeConfluenceLinks(markdown, rc.cfg.BaseURL())
+		markdown, err = absolutizeConfluenceLinks(markdown, rc.cfg.SiteURL())
 		if err != nil {
 			logPageWithLevel("ERR", pageID, "absolutize links failed: %v", err)
 			return err

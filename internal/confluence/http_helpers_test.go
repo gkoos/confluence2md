@@ -9,79 +9,103 @@ import (
 	"testing"
 )
 
-func TestSameHost(t *testing.T) {
+func TestCredentialHostAllowlist(t *testing.T) {
 	cases := []struct {
-		name string
-		a    string
-		b    string
-		want bool
+		name       string
+		siteURL    string
+		apiBaseURL string
+		want       []string
 	}{
 		{
-			name: "identical hosts",
-			a:    "https://example.atlassian.net/wiki/rest/api",
-			b:    "https://example.atlassian.net/wiki/api/v2/attachments/123/download",
-			want: true,
+			name:       "classic mode: single host",
+			siteURL:    "https://example.atlassian.net",
+			apiBaseURL: "https://example.atlassian.net",
+			want:       []string{"example.atlassian.net"},
 		},
 		{
-			name: "mixed-case hosts still match",
-			a:    "https://Example.Atlassian.NET/wiki",
-			b:    "https://example.atlassian.net/wiki/other",
-			want: true,
+			name:       "scoped mode: both hosts allowed",
+			siteURL:    "https://example.atlassian.net",
+			apiBaseURL: "https://api.atlassian.com/ex/confluence/11111111-1111-1111-1111-111111111111",
+			want:       []string{"api.atlassian.com", "example.atlassian.net"},
 		},
 		{
-			name: "cross-host does not match",
-			a:    "https://example.atlassian.net/wiki",
-			b:    "https://media.example-cdn.com/files/123",
-			want: false,
+			name:       "case-insensitive host comparison",
+			siteURL:    "https://Example.Atlassian.NET",
+			apiBaseURL: "https://Example.Atlassian.NET",
+			want:       []string{"example.atlassian.net"},
 		},
 		{
-			name: "parse failure on first URL",
-			a:    "://not-a-valid-url",
-			b:    "https://example.atlassian.net/wiki",
-			want: false,
-		},
-		{
-			name: "parse failure on second URL",
-			a:    "https://example.atlassian.net/wiki",
-			b:    "://not-a-valid-url",
-			want: false,
+			name:       "unparseable site URL contributes nothing",
+			siteURL:    "://not-a-valid-url",
+			apiBaseURL: "https://api.atlassian.com/ex/confluence/abc",
+			want:       []string{"api.atlassian.com"},
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := sameHost(tc.a, tc.b)
-			if got != tc.want {
-				t.Fatalf("sameHost(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+			got := credentialHostAllowlist(tc.siteURL, tc.apiBaseURL)
+			if len(got) != len(tc.want) {
+				t.Fatalf("credentialHostAllowlist(%q, %q) = %v, want %v", tc.siteURL, tc.apiBaseURL, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("credentialHostAllowlist(%q, %q) = %v, want %v", tc.siteURL, tc.apiBaseURL, got, tc.want)
+				}
 			}
 		})
 	}
 }
 
 func TestNewConditionallyAuthedRequest(t *testing.T) {
+	// Scoped-mode allowlist: both the gateway host and the site host are
+	// allowed, exercising FR-021's "site host in scoped mode" member.
 	client := &Client{
-		baseURL:  "https://example.atlassian.net/wiki",
-		username: "user@example.com",
-		token:    "secret-token",
+		allowedHosts: credentialHostAllowlist("https://example.atlassian.net", "https://api.atlassian.com/ex/confluence/11111111-1111-1111-1111-111111111111"),
+		username:     "user@example.com",
+		token:        "secret-token",
 	}
 
-	t.Run("same host attaches credentials", func(t *testing.T) {
-		req, err := client.newConditionallyAuthedRequest(context.Background(), http.MethodGet, "https://example.atlassian.net/wiki/api/v2/pages/1", nil)
+	t.Run("API base host attaches credentials", func(t *testing.T) {
+		req, err := client.newConditionallyAuthedRequest(context.Background(), http.MethodGet, "https://api.atlassian.com/ex/confluence/11111111-1111-1111-1111-111111111111/wiki/api/v2/pages/1", nil)
 		if err != nil {
 			t.Fatalf("newConditionallyAuthedRequest: %v", err)
 		}
 		if _, _, ok := req.BasicAuth(); !ok {
-			t.Fatal("expected Authorization header to be set for same-host endpoint")
+			t.Fatal("expected Authorization header to be set for the API base host")
 		}
 	})
 
-	t.Run("cross host omits credentials", func(t *testing.T) {
+	t.Run("site host attaches credentials in scoped mode", func(t *testing.T) {
+		req, err := client.newConditionallyAuthedRequest(context.Background(), http.MethodGet, "https://example.atlassian.net/wiki/rest/api/content/1/child/attachment/2/download", nil)
+		if err != nil {
+			t.Fatalf("newConditionallyAuthedRequest: %v", err)
+		}
+		if _, _, ok := req.BasicAuth(); !ok {
+			t.Fatal("expected Authorization header to be set for the allowlisted site host")
+		}
+	})
+
+	t.Run("foreign redirect target omits credentials", func(t *testing.T) {
 		req, err := client.newConditionallyAuthedRequest(context.Background(), http.MethodGet, "https://media.example-cdn.com/files/123", nil)
 		if err != nil {
 			t.Fatalf("newConditionallyAuthedRequest: %v", err)
 		}
 		if _, _, ok := req.BasicAuth(); ok {
-			t.Fatal("expected no Authorization header for cross-host endpoint")
+			t.Fatal("expected no Authorization header for a foreign redirect target")
+		}
+	})
+
+	t.Run("host cannot be determined: never treated as allowed", func(t *testing.T) {
+		// hostAllowed must fail closed for a destination whose host can't be
+		// parsed (FR-021) — verified directly, since http.NewRequestWithContext
+		// itself also rejects a malformed URL before credential attachment
+		// would even be considered.
+		if client.hostAllowed("://not-a-valid-url") {
+			t.Fatal("expected hostAllowed to reject an unparseable destination")
+		}
+		if client.hostAllowed("relative/no-host") {
+			t.Fatal("expected hostAllowed to reject a destination with no host")
 		}
 	})
 }

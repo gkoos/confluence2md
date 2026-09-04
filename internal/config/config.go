@@ -7,7 +7,20 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/spf13/viper"
+)
+
+// gatewayBaseURL is the fixed host Atlassian serves scoped API tokens from.
+// See research.md R1: scoped tokens are never valid against the tenant's own
+// domain, only against this central gateway.
+const gatewayBaseURL = "https://api.atlassian.com/ex/confluence"
+
+// Accepted values for confluence.auth_mode. See data-model.md "Entity: AuthMode".
+const (
+	AuthModeAuto    = "auto"
+	AuthModeClassic = "classic"
+	AuthModeScoped  = "scoped"
 )
 
 type Config struct {
@@ -22,6 +35,13 @@ type Config struct {
 type ConfluenceConfig struct {
 	Username string `mapstructure:"username"`
 	Token    string `mapstructure:"token"`
+	// AuthMode selects which Atlassian credential style requests are routed
+	// for: "auto" (default, probed at startup), "classic", or "scoped". See
+	// data-model.md "Entity: AuthMode".
+	AuthMode string `mapstructure:"auth_mode"`
+	// CloudID overrides automatic cloud-ID resolution (confluence/_edge/tenant_info)
+	// for scoped mode. Optional; only used when the effective mode is "scoped".
+	CloudID string `mapstructure:"cloud_id"`
 }
 
 type CrawlConfig struct {
@@ -126,6 +146,16 @@ func (c *Config) Validate() error {
 		errs = append(errs, "retry.initial_backoff_ms must be >= 1")
 	}
 
+	if mode := strings.ToLower(strings.TrimSpace(c.Confluence.AuthMode)); mode != "" &&
+		mode != AuthModeAuto && mode != AuthModeClassic && mode != AuthModeScoped {
+		errs = append(errs, fmt.Sprintf("confluence.auth_mode must be one of %q, %q, %q (got %q)", AuthModeAuto, AuthModeClassic, AuthModeScoped, c.Confluence.AuthMode))
+	}
+	if cloudID := strings.TrimSpace(c.Confluence.CloudID); cloudID != "" {
+		if _, err := uuid.Parse(cloudID); err != nil {
+			errs = append(errs, fmt.Sprintf("confluence.cloud_id must be a valid UUID (got %q)", c.Confluence.CloudID))
+		}
+	}
+
 	if len(c.PostCrawlHook.Command) > 0 {
 		hasExecutable := false
 		for _, token := range c.PostCrawlHook.Command {
@@ -145,9 +175,26 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// BaseURL derives the Confluence API base URL from the first seed.
-// e.g. https://org.atlassian.net/wiki/spaces/... -> https://org.atlassian.net/wiki
-func (c *Config) BaseURL() string {
+// EffectiveAuthMode normalizes confluence.auth_mode (trimmed, lower-cased)
+// and returns AuthModeAuto when it is absent, so an empty/legacy config
+// resolves to the auto-probe path — the property that keeps a pre-feature
+// config.yaml behaving exactly as before (FR-018, SC-003).
+func (c *Config) EffectiveAuthMode() string {
+	mode := strings.ToLower(strings.TrimSpace(c.Confluence.AuthMode))
+	if mode == "" {
+		return AuthModeAuto
+	}
+	return mode
+}
+
+// SiteURL derives the Confluence tenant URL from the first seed, e.g.
+// https://org.atlassian.net/wiki/spaces/... -> https://org.atlassian.net/wiki
+//
+// This value is used for anything that lands in an emitted artifact — the
+// canonical webui URL, link-scope host matching, link absolutisation — and
+// MUST NOT vary with AuthMode or credential style (research R5, FR-013).
+// Everything that issues an actual API request must use APIBaseURL instead.
+func (c *Config) SiteURL() string {
 	u, err := url.Parse(c.Crawl.Seeds[0])
 	if err != nil {
 		return ""
@@ -158,4 +205,25 @@ func (c *Config) BaseURL() string {
 		return fmt.Sprintf("%s://%s/%s", u.Scheme, u.Host, parts[1])
 	}
 	return fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+}
+
+// APIBaseURL returns the request target for API calls: the site URL in
+// classic mode, or the Atlassian gateway URL (no /wiki suffix — see
+// contracts/api-endpoints.md) in scoped mode.
+//
+// This accessor only has enough information to resolve the scoped-mode base
+// when confluence.cloud_id is explicitly configured (FR-007). When the
+// effective mode is "scoped" but cloud_id is empty, the cloud ID must be
+// resolved at runtime over the network (internal/confluence.ResolveCloudID);
+// that resolution and the resulting gateway URL are owned by the confluence
+// package's auth-mode resolver, not by this method, since config.Config must
+// not perform network I/O. Callers that have already resolved a cloud ID
+// should build the gateway URL directly rather than relying on this method.
+func (c *Config) APIBaseURL() string {
+	if c.EffectiveAuthMode() == AuthModeScoped {
+		if cloudID := strings.TrimSpace(c.Confluence.CloudID); cloudID != "" {
+			return gatewayBaseURL + "/" + cloudID
+		}
+	}
+	return c.SiteURL()
 }

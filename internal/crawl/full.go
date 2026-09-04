@@ -301,7 +301,12 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 		if confluence.IsNotFound(err) {
 			return deletedNodeResult(pageID, depth, "")
 		}
-		page.FetchError = fmt.Sprintf("fetch failed: %v", err)
+		// A permission-denied fetch is reported and counted like any other
+		// per-page failure and does not abort the crawl (FR-011). The
+		// message is classified (missing scope vs rejected credential) so
+		// the operator can tell the two apart without inspecting source or
+		// network traces (FR-009, FR-010).
+		page.FetchError = fmt.Sprintf("fetch failed: %s", confluence.DescribeAuthFailure(cs.client.Mode(), fmt.Sprintf("page %d", pageID), err))
 		return &NodeHandlerResult{Page: page, FetchError: page.FetchError}
 	}
 	if strings.EqualFold(strings.TrimSpace(fetchedPage.Status), "trashed") {
@@ -357,12 +362,12 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	}
 
 	// Extract outgoing page IDs from ADF JSON
-	page.OutgoingLinks, page.ExternalLinksSkipped = links.ExtractPageIDsFromADFWithStats(fetchedPage.Body.ADF.Value, cs.config.BaseURL())
+	page.OutgoingLinks, page.ExternalLinksSkipped = links.ExtractPageIDsFromADFWithStats(fetchedPage.Body.ADF.Value, cs.config.SiteURL())
 
 	// Also extract links from comment bodies so pages referenced only in
 	// comments are discovered and crawled.
 	for _, comment := range page.Comments {
-		commentIDs, _ := links.ExtractPageIDsFromADFWithStats(comment.Body, cs.config.BaseURL())
+		commentIDs, _ := links.ExtractPageIDsFromADFWithStats(comment.Body, cs.config.SiteURL())
 		page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, commentIDs...))
 	}
 
@@ -408,7 +413,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 				title = strconv.FormatInt(id, 10)
 			}
 			fmt.Fprintf(&relatedBuf, "- [%s](%s/wiki/pages/viewpage.action?pageId=%d)\n",
-				title, cs.config.BaseURL(), id)
+				title, cs.config.SiteURL(), id)
 		}
 		page.Markdown += relatedBuf.String()
 	}

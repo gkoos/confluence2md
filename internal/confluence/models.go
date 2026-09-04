@@ -44,7 +44,6 @@ type AttachmentData struct {
 	Filename      string
 	MediaType     string
 	FileSizeBytes int64
-	DownloadURL   string // absolute URL ready for authenticated download
 	FileID        string // Confluence Media Services UUID (fileId from v2 API); matches ADF media.attrs.id
 }
 

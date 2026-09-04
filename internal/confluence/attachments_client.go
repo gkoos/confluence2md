@@ -27,14 +27,12 @@ func (c *Client) GetPageAttachments(ctx context.Context, pageID int64) ([]Attach
 		}
 
 		for _, r := range page.Results {
-			downloadURL := fmt.Sprintf("%s/wiki/api/v2/attachments/%s/download", c.baseURL, r.ID)
 			all = append(all, AttachmentData{
 				ID:            strings.TrimSpace(r.ID),
 				PageID:        strings.TrimSpace(r.PageID),
 				Filename:      strings.TrimSpace(r.Title),
 				MediaType:     strings.TrimSpace(r.MediaType),
 				FileSizeBytes: int64(r.FileSize),
-				DownloadURL:   downloadURL,
 				FileID:        strings.TrimSpace(r.FileID),
 			})
 		}
@@ -89,7 +87,7 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 		return fmt.Errorf("download attachment: missing attachment ID")
 	}
 
-	redirectEndpoint := fmt.Sprintf("%s/wiki/rest/api/content/%s/child/attachment/%s/download", c.baseURL, attachment.PageID, attachment.ID)
+	redirectEndpoint := fmt.Sprintf("%s/wiki/rest/api/content/%s/child/attachment/%s/download", c.apiBaseURL, attachment.PageID, attachment.ID)
 
 	req, err := c.newAuthedRequest(ctx, http.MethodGet, redirectEndpoint, nil)
 	if err != nil {
@@ -112,7 +110,7 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 	var downloadURL string
 	switch resp.StatusCode {
 	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
-		downloadURL = resolveNextEndpoint(c.baseURL, resp.Header.Get("Location"))
+		downloadURL = resolveNextEndpoint(c.apiBaseURL, resp.Header.Get("Location"))
 		if strings.TrimSpace(downloadURL) == "" {
 			return fmt.Errorf("attachment redirect missing Location header")
 		}
@@ -123,9 +121,18 @@ func (c *Client) DownloadAttachment(ctx context.Context, attachment AttachmentDa
 		return fmt.Errorf("attachment redirect endpoint: %w", readAPIError(resp))
 	}
 
-	// Only re-send credentials if the redirect stayed on the Confluence host.
+	// Only re-send credentials if the redirect landed on a host in
+	// c.allowedHosts (API base, plus the site host in scoped mode).
 	// Cross-host redirects (e.g. to a media CDN) use signed URLs and must not
 	// receive our Basic Auth, mirroring net/http's own redirect behaviour.
+	//
+	// What the gateway actually returns here — an absolute or relative
+	// Location, and which host it names — is unverified without a live
+	// scoped token (research R6, tasks.md T024). This allowlist is the
+	// fail-closed default pending that verification: it never withholds
+	// credentials from a redirect that legitimately needs them within the
+	// two known bases, and it never grants them to anything else. See
+	// docs/design-decisions.md for the open verification gate.
 	fileReq, err := c.newConditionallyAuthedRequest(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return fmt.Errorf("build attachment file request: %w", err)

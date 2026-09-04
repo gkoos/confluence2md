@@ -41,7 +41,7 @@ func TestFetchV2CommentsFromEndpoint_Paginates(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestFetchV2CommentsFromEndpoint_SameHostAbsoluteNextLink(t *testing.T) {
 	ts = httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestFetchV2CommentsFromEndpoint_CrossHostNextLinkOmitsCredentials(t *testin
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestGetPageCommentsV2_FetchesChildrenAndDisplayNames(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}

@@ -38,35 +38,69 @@ func IsNotFound(err error) bool {
 }
 
 // Client wraps the Confluence API client used by the crawler.
+//
+// It deliberately tracks two distinct base URLs (research R5): siteURL is
+// the tenant domain and is used only for values that land in emitted
+// artifacts (webui links) and never varies with credential style;
+// apiBaseURL is where requests actually go, and is the tenant domain in
+// classic mode or the Atlassian gateway in scoped mode.
 type Client struct {
-	api        *atlassian.Client
-	httpClient *http.Client
-	baseURL    string
-	username   string
-	token      string
+	api          *atlassian.Client
+	httpClient   *http.Client
+	siteURL      string
+	apiBaseURL   string
+	allowedHosts []string
+	username     string
+	token        string
+	mode         string
 }
 
 // NewClient creates an authenticated Confluence Cloud client.
-func NewClient(baseURL, username, token string, retry config.RetryConfig, rateLimitRPM int, concurrency int) (*Client, error) {
-	baseURL = strings.TrimSuffix(baseURL, "/")
-	baseURL = strings.TrimSuffix(baseURL, "/wiki")
+//
+// siteURL is the tenant domain (e.g. https://org.atlassian.net/wiki); it is
+// used only for artifact-facing values and is never sent an API request
+// unless apiBaseURL equals it (classic mode). apiBaseURL is where every API
+// request actually goes — the same value as siteURL in classic mode, or the
+// Atlassian gateway base (https://api.atlassian.com/ex/confluence/<cloudid>)
+// in scoped mode. See contracts/api-endpoints.md.
+func NewClient(siteURL, apiBaseURL, username, token string, retry config.RetryConfig, rateLimitRPM int, concurrency int) (*Client, error) {
+	// siteURL is normalized to its root (scheme+host, no /wiki) because
+	// every hand-built endpoint and go-atlassian's own relative paths
+	// already include a "wiki/..." segment; stripping it here and letting
+	// call sites re-add it is what research R4 documents.
+	siteURL = strings.TrimSuffix(siteURL, "/")
+	siteURL = strings.TrimSuffix(siteURL, "/wiki")
 
-	baseHost := ""
-	if parsed, err := url.Parse(baseURL); err == nil {
-		baseHost = parsed.Host
+	// apiBaseURL gets the same /wiki-suffix trim. In classic mode
+	// apiBaseURL is the site URL itself (".../wiki") and needs exactly the
+	// same normalization the site URL gets, for the same reason — endpoint
+	// paths add "wiki/..." themselves, so leaving the suffix on here would
+	// double it (contracts/api-endpoints.md's own tables never carry a
+	// duplicated /wiki segment). In scoped mode apiBaseURL is the gateway
+	// base, which never ends in "/wiki" (cloud IDs are UUIDs), so this trim
+	// is a safe no-op there — the gateway base never carries the suffix to
+	// begin with (research R4).
+	apiBaseURL = strings.TrimSuffix(apiBaseURL, "/")
+	apiBaseURL = strings.TrimSuffix(apiBaseURL, "/wiki")
+
+	apiHost := ""
+	if parsed, err := url.Parse(apiBaseURL); err == nil {
+		apiHost = parsed.Host
 	}
 	if concurrency < 1 {
 		concurrency = 1
 	}
 
-	rateLimitedTransport := newRateLimitTransport(http.DefaultTransport, rateLimitRPM, concurrency, baseHost)
+	// Rate limiting is scoped to the host that actually receives the
+	// request volume: the API base, not the (possibly different) site host.
+	rateLimitedTransport := newRateLimitTransport(http.DefaultTransport, rateLimitRPM, concurrency, apiHost)
 	transport := newRetryTransport(rateLimitedTransport, retry.MaxAttempts, retry.InitialBackoffMS)
 	httpClient := &http.Client{
 		Timeout:   20 * time.Second,
 		Transport: transport,
 	}
 
-	api, err := atlassian.New(httpClient, baseURL)
+	api, err := atlassian.New(httpClient, apiBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("initialize go-atlassian client: %w", err)
 	}
@@ -74,24 +108,51 @@ func NewClient(baseURL, username, token string, retry config.RetryConfig, rateLi
 	api.Auth.SetBasicAuth(username, token)
 
 	return &Client{
-		api:        api,
-		httpClient: httpClient,
-		baseURL:    baseURL,
-		username:   username,
-		token:      token,
+		api:          api,
+		httpClient:   httpClient,
+		siteURL:      siteURL,
+		apiBaseURL:   apiBaseURL,
+		allowedHosts: credentialHostAllowlist(siteURL, apiBaseURL),
+		username:     username,
+		token:        token,
 	}, nil
 }
 
-// Ping performs a lightweight authenticated call to verify credentials.
-func (c *Client) Ping(ctx context.Context) error {
-	_, response, err := c.api.Space.Bulk(ctx, nil, "", 1)
-	if err != nil {
-		if response != nil {
-			return fmt.Errorf("confluence auth check failed (status %d): %w", response.Code, err)
-		}
+// Mode reports the resolved credential style ("classic" or "scoped") once
+// set by the auth-mode resolver (see authmode.go). Empty until resolved.
+func (c *Client) Mode() string {
+	return c.mode
+}
+
+// SetMode overrides the resolved credential style. Exposed for tests that
+// need to exercise mode-dependent classification (e.g.
+// confluence.DescribeAuthFailure) without going through the full
+// ResolveAuth probe sequence. Production code should never need this: mode
+// is set once, by ResolveAuth, at startup.
+func (c *Client) SetMode(mode string) {
+	c.mode = mode
+}
+
+// SiteURL returns the tenant domain this client was constructed with.
+func (c *Client) SiteURL() string {
+	return c.siteURL
+}
+
+// APIBaseURL returns the base URL every request is actually sent to.
+func (c *Client) APIBaseURL() string {
+	return c.apiBaseURL
+}
+
+// Ping validates credentials by fetching the first configured seed page
+// through the client's selected API base — the same endpoint, host, and
+// scope the crawl's very first real request uses (research R7, FR-008), so a
+// passing Ping reliably predicts the crawl can begin (SC-002). It
+// deliberately no longer calls the space-listing endpoint: that required a
+// scope (space read) the crawl never otherwise needs.
+func (c *Client) Ping(ctx context.Context, seed string) error {
+	if _, err := c.GetPageBySeed(ctx, seed); err != nil {
 		return fmt.Errorf("confluence auth check failed: %w", err)
 	}
-
 	return nil
 }
 
@@ -105,7 +166,7 @@ func (c *Client) GetPageBySeed(ctx context.Context, seed string) (*PageData, err
 	page, response, err := c.api.Page.Get(ctx, pageID, "atlas_doc_format", false, 0)
 	if err != nil {
 		if response != nil {
-			return nil, fmt.Errorf("failed to fetch page %d (status %d): %w", pageID, response.Code, err)
+			return nil, fmt.Errorf("failed to fetch page %d (status %d): %w", pageID, response.Code, &httpStatusError{statusCode: response.Code, err: err})
 		}
 		return nil, fmt.Errorf("failed to fetch page %d: %w", pageID, err)
 	}
@@ -161,8 +222,12 @@ func (c *Client) GetPageByID(ctx context.Context, pageID int64, spaceKey string)
 	}
 
 	// Construct canonical URL - Confluence Cloud defaults to viewpage.action format
-	// The API doesn't return direct links in PageScheme, so we construct it
-	data.Links.Webui = fmt.Sprintf("%s/wiki/pages/viewpage.action?pageId=%d", c.baseURL, pageID)
+	// The API doesn't return direct links in PageScheme, so we construct it.
+	//
+	// This MUST use the site URL, never the API base: it is artifact-facing
+	// (page front matter, metadata.json) and must stay identical regardless
+	// of credential style (research R5, FR-013, constitution Principle I).
+	data.Links.Webui = fmt.Sprintf("%s/wiki/pages/viewpage.action?pageId=%d", c.siteURL, pageID)
 
 	return data, nil
 }
@@ -256,7 +321,7 @@ func (c *Client) SearchPagesByCQL(ctx context.Context, cql string) ([]int64, err
 		params.Set("limit", strconv.Itoa(limit))
 		params.Set("start", strconv.Itoa(start))
 
-		endpoint := fmt.Sprintf("%s/wiki/rest/api/search?%s", c.baseURL, params.Encode())
+		endpoint := fmt.Sprintf("%s/wiki/rest/api/search?%s", c.apiBaseURL, params.Encode())
 		req, err := c.newAuthedRequest(ctx, http.MethodGet, endpoint, nil)
 		if err != nil {
 			return nil, fmt.Errorf("build CQL search request: %w", err)

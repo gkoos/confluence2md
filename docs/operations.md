@@ -48,6 +48,19 @@ Checks:
 2. Confirm token has read access to target spaces.
 3. Verify seed URLs point to accessible pages for that account.
 
+Atlassian returns the same HTTP status (401, sometimes 403) for three
+distinct problems that need three different fixes. `confluence2md` classifies
+which one applies and reports it in the failure message, but if you're
+reading a raw upstream error or a log line without that context, use this to
+tell them apart:
+
+| Cause | How it presents | Fix |
+|---|---|---|
+| **Missing scope** (scoped tokens only) | The credential authenticates successfully — validation reaches the Atlassian gateway — but a specific request (e.g. attachment download) is denied. Reported as "credentials authenticated but lack a required permission." | Add the missing scope to the token. See [README.md — Required scopes](../README.md#required-scopes) for the exact list; check especially that both attachment scopes are granted (discovery and download are separate scopes). |
+| **Rejected credential** (invalid or revoked) | Every request fails from the very first probe, in either credential style. Reported as "credentials rejected (invalid, revoked, or expired)." | Regenerate the API token at https://id.atlassian.com/manage-profile/security/api-tokens and update `confluence.token` / `CONFLUENCE_TOKEN`. |
+| **Expired credential** (scoped tokens only) | Identical symptom to a rejected credential — Atlassian does not distinguish "expired" from "revoked" in its response, and this tool does not have visibility into a token's expiry date. Also reported as "credentials rejected." | Create a new scoped token (scoped tokens always carry an expiry, 1–365 days; classic tokens never expire) and update your configuration. If this is a scheduled/unattended run, put a renewal reminder in place before the current token's expiry date. |
+| **Cloud-ID resolution failure** (scoped/auto modes only) | The run aborts before any crawling begins, naming the site and the resolution step (`resolve cloud ID for site ...`). Happens when `https://<your-site>.atlassian.net/_edge/tenant_info` is unreachable or returns something unexpected. | Verify the site is reachable and the seed URLs point at the correct tenant. As a workaround, set `confluence.cloud_id` explicitly in `config.yaml` (find it via Atlassian's [Get accessible resources](https://developer.atlassian.com/cloud/confluence/oauth-2-3lo-apps/) endpoint or your own tooling) to skip automatic resolution. |
+
 ### Rate limiting and transient API errors
 
 Current behavior:
