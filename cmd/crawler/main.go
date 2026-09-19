@@ -10,6 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// version is the build version, injected at release time via
+// -ldflags "-X main.version={{.Version}}". Local/dev builds report "dev".
+var version = "dev"
+
 var (
 	cfgFile   string
 	mode      string
@@ -18,9 +22,10 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "confluence2md",
-	Short: "Crawl a Confluence Cloud instance and export pages to Markdown",
-	RunE:  run,
+	Use:     "confluence2md",
+	Short:   "Crawl a Confluence Cloud instance and export pages to Markdown",
+	Version: version,
+	RunE:    run,
 }
 
 var validateCmd = &cobra.Command{
@@ -30,6 +35,7 @@ var validateCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
 	rootCmd.Flags().StringVar(&cfgFile, "config", "config.yaml", "Path to config file")
 	rootCmd.Flags().StringVar(&mode, "mode", "", "Crawl mode: full or updates (required)")
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview crawl scope and decisions without writing output artifacts")
@@ -37,6 +43,8 @@ func init() {
 }
 
 func run(cmd *cobra.Command, args []string) error {
+	fmt.Printf("confluence2md version %s\n", version)
+
 	rc, err := bootstrapRun(mode, cfgFile, dryRun)
 	if err != nil {
 		return err
