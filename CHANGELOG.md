@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/gkoos/confluence2md/compare/v1.4.0...v1.5.0) (2026-09-19)
+
+
+### Features
+
+* support crawling multiple Confluence hosts ([#103](https://github.com/gkoos/confluence2md/issues/103)) ([7775758](https://github.com/gkoos/confluence2md/commit/7775758cb30d294c62ea3ef75e408976033d3233))
+
 ## [1.4.0](https://github.com/gkoos/confluence2md/compare/v1.3.5...v1.4.0) (2026-09-19)
 
 
