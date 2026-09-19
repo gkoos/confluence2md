@@ -19,6 +19,7 @@ import (
 // CrawledPage represents a page after conversion and link extraction
 type CrawledPage struct {
 	ID                   int64
+	Host                 string // lower-cased tenant host this page was fetched from
 	Title                string
 	Markdown             string
 	Reused               bool
@@ -29,7 +30,7 @@ type CrawledPage struct {
 	RawADF               string // raw Confluence ADF JSON body
 	CanonicalURL         string
 	SpaceKey             string
-	OutgoingLinks        []int64 // page IDs of all linked pages
+	OutgoingLinks        []store.PageRef // host-scoped refs of all linked pages
 	ExternalLinksSkipped int
 	Version              int
 	SourceURL            string
@@ -66,7 +67,7 @@ const maxQueueDropSamples = 20
 // The traversal engine only depends on OutgoingLinks, FetchError, and Deleted.
 type NodeHandlerResult struct {
 	Page                 *CrawledPage
-	OutgoingLinks        []int64
+	OutgoingLinks        []store.PageRef
 	FetchError           string
 	Deleted              bool
 	Title                string
@@ -74,23 +75,24 @@ type NodeHandlerResult struct {
 }
 
 // CrawlNodeHandler processes a single traversed node.
-type CrawlNodeHandler func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult
+type CrawlNodeHandler func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult
 
 // CrawlSession manages the full BFS traversal
 type CrawlSession struct {
-	client        *confluence.Client
+	clients       *confluence.ClientSet
 	config        *config.Config
 	dryRun        bool
 	maxDepth      int
 	concurrency   int
 	seedSpaceKey  string // resolved alpha space key for title lookups
+	qualify       bool   // true when crawling multiple hosts (host-qualified keys)
 	nodeHandler   CrawlNodeHandler
 	previousPages map[string]store.PageRecord
 
 	// BFS state
 	queue   chan queueItem
-	visited map[int64]bool
-	results map[int64]*CrawledPage
+	visited map[string]bool
+	results map[string]*CrawledPage
 	mu      sync.RWMutex
 
 	// Concurrency control
@@ -106,22 +108,24 @@ type CrawlSession struct {
 }
 
 type queueItem struct {
+	host   string
 	pageID int64
 	depth  int
 }
 
 // NewCrawlSession creates a new BFS crawler session
-func NewCrawlSession(client *confluence.Client, cfg *config.Config, seedSpaceKey string) *CrawlSession {
+func NewCrawlSession(clients *confluence.ClientSet, cfg *config.Config, seedSpaceKey string) *CrawlSession {
 	cs := &CrawlSession{
-		client:       client,
+		clients:      clients,
 		config:       cfg,
 		maxDepth:     cfg.Crawl.MaxDepth,
 		concurrency:  cfg.Crawl.Concurrency,
 		seedSpaceKey: seedSpaceKey,
+		qualify:      len(cfg.SiteHosts()) > 1,
 
 		queue:     make(chan queueItem, cfg.Crawl.QueueSize),
-		visited:   make(map[int64]bool),
-		results:   make(map[int64]*CrawledPage),
+		visited:   make(map[string]bool),
+		results:   make(map[string]*CrawledPage),
 		semaphore: make(chan struct{}),
 	}
 
@@ -152,7 +156,7 @@ func (cs *CrawlSession) EnableUpdatesMode(previousPages map[string]store.PageRec
 }
 
 // Run executes the full BFS crawl starting from seed pages
-func (cs *CrawlSession) Run(ctx context.Context, seedPageIDs []int64) (map[int64]*CrawledPage, error) {
+func (cs *CrawlSession) Run(ctx context.Context, seeds []store.PageRef) (map[string]*CrawledPage, error) {
 	// Initialize semaphore with concurrency limit
 	cs.semaphore = make(chan struct{}, cs.concurrency)
 
@@ -164,12 +168,13 @@ func (cs *CrawlSession) Run(ctx context.Context, seedPageIDs []int64) (map[int64
 	}
 
 	// Enqueue seed pages at depth 0
-	for _, pageID := range seedPageIDs {
+	for _, seed := range seeds {
+		key := seed.Key()
 		cs.mu.Lock()
-		if !cs.visited[pageID] {
-			cs.visited[pageID] = true
+		if !cs.visited[key] {
+			cs.visited[key] = true
 			cs.pendingWork.Add(1)
-			cs.queue <- queueItem{pageID: pageID, depth: 0}
+			cs.queue <- queueItem{host: seed.Host, pageID: seed.ID, depth: 0}
 		}
 		cs.mu.Unlock()
 	}
@@ -232,7 +237,7 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 		}
 
 		// Process node via mode-specific callback.
-		result := cs.nodeHandler(ctx, item.pageID, item.depth)
+		result := cs.nodeHandler(ctx, item.host, item.pageID, item.depth)
 		if result == nil {
 			result = &NodeHandlerResult{FetchError: "node handler returned nil result"}
 		}
@@ -240,6 +245,7 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 			if result.Page == nil {
 				result.Page = &CrawledPage{
 					ID:        item.pageID,
+					Host:      item.host,
 					Deleted:   true,
 					CrawledAt: time.Now(),
 					Depth:     item.depth,
@@ -254,9 +260,11 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 			title = result.Page.Title
 		}
 
+		key := store.PageKey(item.host, item.pageID, true)
+
 		cs.mu.Lock()
 		if result.Page != nil {
-			cs.results[item.pageID] = result.Page
+			cs.results[key] = result.Page
 		}
 		cs.totalFetched++
 		fetched := cs.totalFetched
@@ -288,29 +296,42 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 // processFullNode fetches, converts, and extracts links for full mode.
-func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
+func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
+	client := cs.clients.ForHost(host)
+	if client == nil {
+		page := &CrawledPage{
+			ID:         pageID,
+			Host:       host,
+			Depth:      depth,
+			CrawledAt:  time.Now(),
+			FetchError: fmt.Sprintf("no client for host %q", host),
+		}
+		return &NodeHandlerResult{Page: page, FetchError: page.FetchError}
+	}
+
 	page := &CrawledPage{
 		ID:        pageID,
+		Host:      host,
 		Depth:     depth,
 		CrawledAt: time.Now(),
 	}
 
 	// Fetch page by ID
-	fetchedPage, err := cs.client.GetPageByID(ctx, pageID, cs.seedSpaceKey)
+	fetchedPage, err := client.GetPageByID(ctx, pageID, cs.seedSpaceKey)
 	if err != nil {
 		if confluence.IsNotFound(err) {
-			return deletedNodeResult(pageID, depth, "")
+			return deletedNodeResult(host, pageID, depth, "")
 		}
 		// A permission-denied fetch is reported and counted like any other
 		// per-page failure and does not abort the crawl (FR-011). The
 		// message is classified (missing scope vs rejected credential) so
 		// the operator can tell the two apart without inspecting source or
 		// network traces (FR-009, FR-010).
-		page.FetchError = fmt.Sprintf("fetch failed: %s", confluence.DescribeAuthFailure(cs.client.Mode(), fmt.Sprintf("page %d", pageID), err))
+		page.FetchError = fmt.Sprintf("fetch failed: %s", confluence.DescribeAuthFailure(client.Mode(), fmt.Sprintf("page %d", pageID), err))
 		return &NodeHandlerResult{Page: page, FetchError: page.FetchError}
 	}
 	if strings.EqualFold(strings.TrimSpace(fetchedPage.Status), "trashed") {
-		return deletedNodeResult(pageID, depth, fetchedPage.Title)
+		return deletedNodeResult(host, pageID, depth, fetchedPage.Title)
 	}
 
 	page.Title = fetchedPage.Title
@@ -328,10 +349,10 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	page.CreatedByID = fetchedPage.AuthorID
 	page.LastModifiedByID = fetchedPage.Version.AuthorID
 	if page.CreatedByID != "" {
-		page.CreatedByName = cs.client.GetUserDisplayName(ctx, page.CreatedByID)
+		page.CreatedByName = client.GetUserDisplayName(ctx, page.CreatedByID)
 	}
 	if page.LastModifiedByID != "" {
-		page.LastModifiedByName = cs.client.GetUserDisplayName(ctx, page.LastModifiedByID)
+		page.LastModifiedByName = client.GetUserDisplayName(ctx, page.LastModifiedByID)
 	}
 
 	// Hierarchy metadata
@@ -342,7 +363,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	}
 
 	// Fetch page comments (best-effort). Failure is non-fatal for page export.
-	comments, err := cs.client.GetPageComments(ctx, pageID)
+	comments, err := client.GetPageComments(ctx, pageID)
 	if err != nil {
 		page.CommentFetchError = fmt.Sprintf("comments fetch failed: %v", err)
 	} else {
@@ -352,7 +373,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 
 	// Fetch attachment metadata (best-effort). Failure is non-fatal for page export.
 	if cs.config.Attachments.Download {
-		attachments, err := cs.client.GetPageAttachments(ctx, pageID)
+		attachments, err := client.GetPageAttachments(ctx, pageID)
 		if err != nil {
 			page.AttachmentFetchError = fmt.Sprintf("attachments fetch failed: %v", err)
 		} else {
@@ -361,26 +382,28 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 		}
 	}
 
-	// Extract outgoing page IDs from ADF JSON
-	page.OutgoingLinks, page.ExternalLinksSkipped = links.ExtractPageIDsFromADFWithStats(fetchedPage.Body.ADF.Value, cs.config.SiteURL())
+	allowedHosts := cs.clients.AllowedHosts()
+
+	// Extract outgoing page refs from ADF JSON
+	page.OutgoingLinks, page.ExternalLinksSkipped = links.ExtractPageIDsFromADFWithStats(fetchedPage.Body.ADF.Value, host, allowedHosts)
 
 	// Also extract links from comment bodies so pages referenced only in
 	// comments are discovered and crawled.
 	for _, comment := range page.Comments {
-		commentIDs, _ := links.ExtractPageIDsFromADFWithStats(comment.Body, cs.config.SiteURL())
-		page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, commentIDs...))
+		commentRefs, _ := links.ExtractPageIDsFromADFWithStats(comment.Body, host, allowedHosts)
+		page.OutgoingLinks = links.DedupPageRefs(append(page.OutgoingLinks, commentRefs...))
 	}
 
 	// If the page contains a "children" macro, or follow_children is enabled,
 	// child pages are not represented as inline links in ADF — fetch them via
 	// the API and add to outgoing links.
 	if links.HasChildrenMacro(fetchedPage.Body.ADF.Value) || cs.config.Crawl.FollowChildren {
-		childIDs, err := cs.client.GetPageChildIDs(ctx, pageID)
+		childIDs, err := client.GetPageChildIDs(ctx, pageID)
 		if err != nil {
 			// Non-fatal: log but continue with whatever inline links we already have.
 			fmt.Printf("  [D%d] WARN  %d — children macro fetch failed: %v\n", depth, pageID, err)
 		} else {
-			page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, childIDs...))
+			page.OutgoingLinks = links.DedupPageRefs(append(page.OutgoingLinks, refsForHost(host, childIDs)...))
 		}
 	}
 
@@ -391,13 +414,13 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 	// In non-dry-run mode we also append a "Related pages" section to rendered
 	// markdown so link rewriting can convert these URLs to local relative paths.
 	for _, cql := range links.ExtractContentByLabelCQLs(fetchedPage.Body.ADF.Value) {
-		cqlIDs, err := cs.client.SearchPagesByCQL(ctx, cql)
+		cqlIDs, err := client.SearchPagesByCQL(ctx, cql)
 		if err != nil {
 			// Non-fatal: log but continue.
 			fmt.Printf("  [D%d] WARN  %d — contentbylabel CQL search failed: %v\n", depth, pageID, err)
 			continue
 		}
-		page.OutgoingLinks = links.DedupPageIDs(append(page.OutgoingLinks, cqlIDs...))
+		page.OutgoingLinks = links.DedupPageRefs(append(page.OutgoingLinks, refsForHost(host, cqlIDs)...))
 
 		if cs.dryRun {
 			continue
@@ -407,13 +430,14 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 		// URLs — the same format the link rewriter resolves to local paths.
 		var relatedBuf strings.Builder
 		relatedBuf.WriteString("\n\n## Related pages\n\n")
+		siteBase := "https://" + host
 		for _, id := range cqlIDs {
-			title, err := cs.client.GetPageTitleByID(ctx, int(id))
+			title, err := client.GetPageTitleByID(ctx, int(id))
 			if err != nil || title == "" {
 				title = strconv.FormatInt(id, 10)
 			}
 			fmt.Fprintf(&relatedBuf, "- [%s](%s/wiki/pages/viewpage.action?pageId=%d)\n",
-				title, cs.config.SiteURL(), id)
+				title, siteBase, id)
 		}
 		page.Markdown += relatedBuf.String()
 	}
@@ -445,45 +469,51 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, pageID int64, depth
 
 // processUpdatesNode applies lightweight state classification before deciding whether
 // to reuse prior metadata (clean) or run full processing (dirty).
-func (cs *CrawlSession) processUpdatesNode(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
-	pageIDStr := strconv.FormatInt(pageID, 10)
+func (cs *CrawlSession) processUpdatesNode(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
+	client := cs.clients.ForHost(host)
+	if client == nil {
+		return cs.processFullNode(ctx, host, pageID, depth)
+	}
+
+	pageIDStr := store.PageKey(host, pageID, cs.qualify)
 	previous, exists := cs.previousPages[pageIDStr]
 
-	state, err := cs.client.GetPageState(ctx, pageID, cs.config.Attachments.Download)
+	state, err := client.GetPageState(ctx, pageID, cs.config.Attachments.Download)
 	if err != nil {
 		if confluence.IsNotFound(err) {
 			title := ""
 			if exists {
 				title = previous.Title
 			}
-			return deletedNodeResult(pageID, depth, title)
+			return deletedNodeResult(host, pageID, depth, title)
 		}
 		// Conservative fallback: unknown state is treated as dirty.
-		return cs.processFullNode(ctx, pageID, depth)
+		return cs.processFullNode(ctx, host, pageID, depth)
 	}
 	if state != nil && strings.EqualFold(strings.TrimSpace(state.Status), "trashed") {
 		title := state.Title
 		if title == "" && exists {
 			title = previous.Title
 		}
-		return deletedNodeResult(pageID, depth, title)
+		return deletedNodeResult(host, pageID, depth, title)
 	}
 	if state == nil || strings.TrimSpace(state.Title) == "" {
 		// Conservative fallback for incomplete lightweight state.
-		return cs.processFullNode(ctx, pageID, depth)
+		return cs.processFullNode(ctx, host, pageID, depth)
 	}
 
 	if !exists {
-		return cs.processFullNode(ctx, pageID, depth)
+		return cs.processFullNode(ctx, host, pageID, depth)
 	}
 
 	if isDirtyComparedToPrevious(previous, state, cs.config.Attachments.Download) {
-		return cs.processFullNode(ctx, pageID, depth)
+		return cs.processFullNode(ctx, host, pageID, depth)
 	}
 
-	outgoing := parseOutgoingLinkIDs(previous.OutgoingLinks)
+	outgoing := parseOutgoingLinkRefs(previous.OutgoingLinks, host)
 	cleanPage := &CrawledPage{
 		ID:                  pageID,
+		Host:                host,
 		Title:               previous.Title,
 		Markdown:            previous.StorageFormat,
 		Reused:              true,
@@ -519,9 +549,10 @@ func (cs *CrawlSession) processUpdatesNode(ctx context.Context, pageID int64, de
 	}
 }
 
-func deletedNodeResult(pageID int64, depth int, title string) *NodeHandlerResult {
+func deletedNodeResult(host string, pageID int64, depth int, title string) *NodeHandlerResult {
 	page := &CrawledPage{
 		ID:        pageID,
+		Host:      host,
 		Title:     title,
 		Deleted:   true,
 		CrawledAt: time.Now(),
@@ -555,16 +586,39 @@ func isDirtyComparedToPrevious(previous store.PageRecord, current *confluence.Pa
 	return false
 }
 
-func parseOutgoingLinkIDs(ids []string) []int64 {
-	out := make([]int64, 0, len(ids))
+func refsForHost(host string, ids []int64) []store.PageRef {
+	refs := make([]store.PageRef, 0, len(ids))
+	for _, id := range ids {
+		if id > 0 {
+			refs = append(refs, store.PageRef{Host: host, ID: id})
+		}
+	}
+	return refs
+}
+
+func parseOutgoingLinkRefs(ids []string, defaultHost string) []store.PageRef {
+	out := make([]store.PageRef, 0, len(ids))
 	for _, raw := range ids {
-		parsed, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
-		if err != nil || parsed <= 0 {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
 			continue
 		}
-		out = append(out, parsed)
+		host := defaultHost
+		idStr := raw
+		// Host-qualified form is "host/id"; bare numeric form uses defaultHost.
+		if idx := strings.LastIndex(raw, "/"); idx > 0 {
+			if _, err := strconv.ParseInt(raw[idx+1:], 10, 64); err == nil {
+				host = raw[:idx]
+				idStr = raw[idx+1:]
+			}
+		}
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || id <= 0 {
+			continue
+		}
+		out = append(out, store.PageRef{Host: host, ID: id})
 	}
-	return links.DedupPageIDs(out)
+	return links.DedupPageRefs(out)
 }
 
 func attachmentSignatureFromData(attachments []confluence.AttachmentData) string {
@@ -608,24 +662,25 @@ func hasLeadingTitleH1(markdown, title string) bool {
 }
 
 // enqueueChildren adds extracted child pages to the queue
-func (cs *CrawlSession) enqueueChildren(parentDepth int, childPageIDs []int64) {
+func (cs *CrawlSession) enqueueChildren(parentDepth int, children []store.PageRef) {
 	childDepth := parentDepth + 1
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	for _, childID := range childPageIDs {
-		if !cs.visited[childID] {
-			cs.visited[childID] = true
+	for _, child := range children {
+		key := child.Key()
+		if !cs.visited[key] {
+			cs.visited[key] = true
 			cs.pendingWork.Add(1)
 			select {
-			case cs.queue <- queueItem{pageID: childID, depth: childDepth}:
+			case cs.queue <- queueItem{host: child.Host, pageID: child.ID, depth: childDepth}:
 			default:
 				// Queue is saturated: track and fail loud later instead of silently losing pages.
 				cs.enqueueDrops++
 				if len(cs.enqueueDropSample) < maxQueueDropSamples {
 					cs.enqueueDropSample = append(cs.enqueueDropSample, queueDropSample{
-						PageID: childID,
+						PageID: child.ID,
 						Depth:  childDepth,
 					})
 				}
@@ -642,13 +697,13 @@ func (cs *CrawlSession) Stats() map[string]any {
 
 	depthDist := make(map[int]int)
 	linkCount := 0
-	uniqueInternalTargets := make(map[int64]struct{})
+	uniqueInternalTargets := make(map[string]struct{})
 	externalSkipped := 0
 	for _, page := range cs.results {
 		depthDist[page.Depth]++
 		linkCount += len(page.OutgoingLinks)
-		for _, targetID := range page.OutgoingLinks {
-			uniqueInternalTargets[targetID] = struct{}{}
+		for _, target := range page.OutgoingLinks {
+			uniqueInternalTargets[target.Key()] = struct{}{}
 		}
 		externalSkipped += page.ExternalLinksSkipped
 	}

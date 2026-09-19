@@ -30,7 +30,7 @@ func TestFullMode_InvalidSeedPreservesExistingOutput(t *testing.T) {
 		// Fail any request (simulating a bad seed endpoint)
 		w.WriteHeader(http.StatusNotFound)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"statusCode": 404,
 			"message":    "Page not found",
 		})
@@ -96,14 +96,14 @@ func TestFullMode_ValidSeedsClearsOutput(t *testing.T) {
 		// Return a valid page response for seed resolution
 		w.Header().Set("Content-Type", "application/json")
 		// Use a response structure that matches the Confluence API v2 response
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"id":    "123",
 			"title": "Test Page",
-			"version": map[string]interface{}{
+			"version": map[string]any{
 				"number": 1,
 			},
-			"body": map[string]interface{}{
-				"atlas_doc_format": map[string]interface{}{
+			"body": map[string]any{
+				"atlas_doc_format": map[string]any{
 					"value": "# Test",
 				},
 			},
@@ -182,7 +182,7 @@ func TestUpdatesMode_InvalidSeedPreservesExistingOutput(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"statusCode": 404,
 			"message":    "Page not found",
 		})

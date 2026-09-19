@@ -84,7 +84,7 @@ func validate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	printCredentialStyle(auth)
+	printCredentialStyles(auth)
 
 	fmt.Println("\nValidation successful, exiting.")
 

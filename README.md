@@ -169,6 +169,18 @@ retry:
   initial_backoff_ms: 1000
 ```
 
+### Multi-host crawls
+
+`crawl.seeds` may list pages across multiple Confluence Cloud hosts (for
+example `company1.atlassian.net` and `company2.atlassian.net`). Each host is
+crawled independently, and cross-host links are followed and deduplicated as a
+single graph — every page is fetched and rendered exactly once, regardless of
+how many seeds or links reach it.
+
+One credential (`confluence.username` / `confluence.token` / `auth_mode`) is
+shared across every host, so the same account/token must have read access on
+all of them. Per-host credentials are not supported yet.
+
 ### Quickstart
 
 Now run a full crawl:

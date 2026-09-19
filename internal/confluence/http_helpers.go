@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -135,12 +136,7 @@ func (c *Client) hostAllowed(endpoint string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Host)
-	for _, h := range c.allowedHosts {
-		if h == host {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.allowedHosts, host)
 }
 
 func resolveNextEndpoint(baseURL, next string) string {

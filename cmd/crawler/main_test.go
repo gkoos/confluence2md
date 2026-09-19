@@ -106,11 +106,11 @@ func TestPruneMetadataToCrawledSet_RemovesUnreachableRecords(t *testing.T) {
 		"1": {ID: "1"},
 		"2": {ID: "2"},
 	}
-	results := map[int64]*crawl.CrawledPage{
-		1: {ID: 1},
+	results := map[string]*crawl.CrawledPage{
+		"1": {ID: 1},
 	}
 
-	pruneMetadataToCrawledSet(pages, results)
+	pruneMetadataToCrawledSet(pages, results, false)
 
 	if len(pages) != 1 {
 		t.Fatalf("expected 1 page after prune, got %d", len(pages))
@@ -285,7 +285,7 @@ func TestFinalizeRun_PartialErrorsAdvanceCompletedOnly(t *testing.T) {
 		mode:               "updates",
 		cfg:                &config.Config{Output: config.OutputConfig{Dir: outDir}},
 		writer:             w,
-		crawlResults:       map[int64]*crawl.CrawledPage{},
+		crawlResults:       map[string]*crawl.CrawledPage{},
 		previousCheckpoint: w.LastSuccessfulCheckpoint(),
 		previousPages:      snapshotPageRecords(w.GetPages()),
 	}
@@ -330,7 +330,7 @@ func TestFinalizeRun_ZeroErrorsAdvanceCompletedAndSuccessful(t *testing.T) {
 		mode:               "full",
 		cfg:                &config.Config{Output: config.OutputConfig{Dir: outDir}},
 		writer:             w,
-		crawlResults:       map[int64]*crawl.CrawledPage{},
+		crawlResults:       map[string]*crawl.CrawledPage{},
 		previousCheckpoint: w.LastSuccessfulCheckpoint(),
 		previousPages:      snapshotPageRecords(w.GetPages()),
 	}
@@ -394,7 +394,7 @@ func TestFullModeDeletedPageIsRemovedFromMetadataAndManagedArtifacts(t *testing.
 		mode:          "full",
 		cfg:           &config.Config{Output: config.OutputConfig{Dir: outDir}},
 		writer:        w,
-		crawlResults:  map[int64]*crawl.CrawledPage{42: {ID: 42, Title: "Deleted page", Deleted: true}},
+		crawlResults:  map[string]*crawl.CrawledPage{"42": {ID: 42, Title: "Deleted page", Deleted: true}},
 		previousPages: previousPages,
 	}
 	metrics := &runMetrics{}
@@ -451,7 +451,7 @@ func TestDeletedPageDryRunPreviewsRemovalWithoutMutation(t *testing.T) {
 		dryRun:        true,
 		cfg:           &config.Config{Output: config.OutputConfig{Dir: outDir}},
 		writer:        w,
-		crawlResults:  map[int64]*crawl.CrawledPage{42: {ID: 42, Title: "Deleted page", Deleted: true}},
+		crawlResults:  map[string]*crawl.CrawledPage{"42": {ID: 42, Title: "Deleted page", Deleted: true}},
 		previousPages: previousPages,
 	}
 	metrics := &runMetrics{}
@@ -499,7 +499,7 @@ func TestFinalizeRun_DryRunSkipsWritesAndCheckpoints(t *testing.T) {
 		dryRun:             true,
 		cfg:                &config.Config{Output: config.OutputConfig{Dir: outDir}},
 		writer:             w,
-		crawlResults:       map[int64]*crawl.CrawledPage{},
+		crawlResults:       map[string]*crawl.CrawledPage{},
 		previousCheckpoint: w.LastSuccessfulCheckpoint(),
 		previousPages: map[string]store.PageRecord{
 			"123": {ID: "123", LocalPath: "page_123.md"},
@@ -662,7 +662,7 @@ func TestProcessReusedPage_DryRunSkipsArtifactMaterialization(t *testing.T) {
 		ID:            123,
 		Title:         "Decision Records",
 		Depth:         1,
-		OutgoingLinks: []int64{555},
+		OutgoingLinks: []store.PageRef{{ID: 555}},
 	}
 
 	if err := processReusedPage(rc, metrics, 123, crawledPage); err != nil {
@@ -684,27 +684,27 @@ func TestProcessReusedPage_DryRunSkipsArtifactMaterialization(t *testing.T) {
 }
 
 func TestPruneDeletedOutgoingLinksFiltersEverySurvivingPage(t *testing.T) {
-	crawlResults := map[int64]*crawl.CrawledPage{
-		1: {ID: 1, Reused: true, OutgoingLinks: []int64{2, 3, 2}},
-		2: {ID: 2, Deleted: true, OutgoingLinks: []int64{4}},
-		3: {ID: 3, OutgoingLinks: []int64{2, 4}},
-		4: {ID: 4},
+	crawlResults := map[string]*crawl.CrawledPage{
+		"1": {ID: 1, Reused: true, OutgoingLinks: []store.PageRef{{ID: 2}, {ID: 3}, {ID: 2}}},
+		"2": {ID: 2, Deleted: true, OutgoingLinks: []store.PageRef{{ID: 4}}},
+		"3": {ID: 3, OutgoingLinks: []store.PageRef{{ID: 2}, {ID: 4}}},
+		"4": {ID: 4},
 	}
 
 	deletedPageIDs := collectDeletedPageIDs(crawlResults)
-	if _, ok := deletedPageIDs[2]; !ok || len(deletedPageIDs) != 1 {
+	if _, ok := deletedPageIDs["2"]; !ok || len(deletedPageIDs) != 1 {
 		t.Fatalf("unexpected deleted page set: %#v", deletedPageIDs)
 	}
 
 	pruneDeletedOutgoingLinks(crawlResults, deletedPageIDs)
 
-	if got := crawlResults[1].OutgoingLinks; len(got) != 1 || got[0] != 3 {
+	if got := crawlResults["1"].OutgoingLinks; len(got) != 1 || got[0].ID != 3 {
 		t.Fatalf("unexpected reused-page outgoing links: %#v", got)
 	}
-	if got := crawlResults[3].OutgoingLinks; len(got) != 1 || got[0] != 4 {
+	if got := crawlResults["3"].OutgoingLinks; len(got) != 1 || got[0].ID != 4 {
 		t.Fatalf("unexpected rerendered-page outgoing links: %#v", got)
 	}
-	if got := crawlResults[2].OutgoingLinks; len(got) != 1 || got[0] != 4 {
+	if got := crawlResults["2"].OutgoingLinks; len(got) != 1 || got[0].ID != 4 {
 		t.Fatalf("expected deleted page payload to remain untouched, got %#v", got)
 	}
 }
@@ -722,10 +722,10 @@ func TestProcessTraversalResultsPersistsPrunedOutgoingLinks(t *testing.T) {
 		cfg:           &config.Config{Output: config.OutputConfig{Dir: outDir}},
 		writer:        w,
 		previousPages: map[string]store.PageRecord{"1": previous},
-		crawlResults: map[int64]*crawl.CrawledPage{
-			1: {ID: 1, Title: "Reused", Reused: true, OutgoingLinks: []int64{2}},
-			2: {ID: 2, Title: "Deleted", Deleted: true},
-			3: {ID: 3, Title: "Rerendered", OutgoingLinks: []int64{2}},
+		crawlResults: map[string]*crawl.CrawledPage{
+			"1": {ID: 1, Title: "Reused", Reused: true, OutgoingLinks: []store.PageRef{{ID: 2}}},
+			"2": {ID: 2, Title: "Deleted", Deleted: true},
+			"3": {ID: 3, Title: "Rerendered", OutgoingLinks: []store.PageRef{{ID: 2}}},
 		},
 		oldManagedArtifacts: managedArtifactSet(map[string]store.PageRecord{"1": previous}),
 	}
@@ -758,7 +758,7 @@ func TestFetchErrorResultIncrementsErrorsAndBlocksCheckpoint(t *testing.T) {
 		mode:          "updates",
 		cfg:           &config.Config{Output: config.OutputConfig{Dir: outDir}},
 		writer:        w,
-		crawlResults:  map[int64]*crawl.CrawledPage{42: {ID: 42, FetchError: "fetch failed"}},
+		crawlResults:  map[string]*crawl.CrawledPage{"42": {ID: 42, FetchError: "fetch failed"}},
 		previousPages: map[string]store.PageRecord{},
 	}
 	metrics := &runMetrics{}
@@ -810,7 +810,7 @@ func TestProcessRerenderedPage_DryRunSkipsPageAndAttachmentWrites(t *testing.T) 
 		SpaceKey:         "SPACE",
 		Depth:            0,
 		CrawledAt:        time.Now().UTC(),
-		OutgoingLinks:    []int64{456},
+		OutgoingLinks:    []store.PageRef{{ID: 456}},
 		CommentCount:     1,
 		Comments:         []confluence.CommentData{{ID: "c1", Body: "{\"type\":\"doc\",\"content\":[]}"}},
 		Attachments:      []confluence.AttachmentData{{ID: "a1", Filename: "diagram.png", FileID: "fid-1", FileSizeBytes: 1024}},

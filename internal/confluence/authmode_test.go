@@ -34,6 +34,20 @@ func pageOKHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"id":"123","title":"Example","status":"current"}`))
 }
 
+// resolveSingleForTest resolves auth for a single-host config and returns the
+// single per-host resolution.
+func resolveSingleForTest(t *testing.T, cfg *config.Config, gatewayURL string) *AuthResolution {
+	t.Helper()
+	res, err := resolveAuthForHosts(t.Context(), cfg, gatewayURL)
+	if err != nil {
+		t.Fatalf("resolveAuthForHosts: %v", err)
+	}
+	if len(res.Order) != 1 {
+		t.Fatalf("expected one resolved host, got %d", len(res.Order))
+	}
+	return res.ForHost(res.Order[0])
+}
+
 func TestResolveAuth_ClassicModeSucceedsWithoutTouchingGateway(t *testing.T) {
 	gatewayCalled := false
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,10 +60,7 @@ func TestResolveAuth_ClassicModeSucceedsWithoutTouchingGateway(t *testing.T) {
 	defer site.Close()
 
 	cfg := authTestConfig(site.URL, "") // absent -> auto
-	auth, err := resolveAuth(t.Context(), cfg, gateway.URL)
-	if err != nil {
-		t.Fatalf("resolveAuth: %v", err)
-	}
+	auth := resolveSingleForTest(t, cfg, gateway.URL)
 	if auth.Mode != config.AuthModeClassic {
 		t.Fatalf("expected classic mode, got %q", auth.Mode)
 	}
@@ -77,10 +88,7 @@ func TestResolveAuth_AutoProbe_SiteFailsThenGatewaySucceeds_ResolvesScoped(t *te
 	defer gateway.Close()
 
 	cfg := authTestConfig(site.URL, "") // auto
-	auth, err := resolveAuth(t.Context(), cfg, gateway.URL)
-	if err != nil {
-		t.Fatalf("resolveAuth: %v", err)
-	}
+	auth := resolveSingleForTest(t, cfg, gateway.URL)
 	if auth.Mode != config.AuthModeScoped {
 		t.Fatalf("expected scoped mode after site 401 + gateway success, got %q", auth.Mode)
 	}
@@ -110,10 +118,7 @@ func TestResolveAuth_AutoProbe_SiteSucceeds_NeverTouchesGateway(t *testing.T) {
 	defer gateway.Close()
 
 	cfg := authTestConfig(site.URL, "auto")
-	auth, err := resolveAuth(t.Context(), cfg, gateway.URL)
-	if err != nil {
-		t.Fatalf("resolveAuth: %v", err)
-	}
+	auth := resolveSingleForTest(t, cfg, gateway.URL)
 	if auth.Mode != config.AuthModeClassic {
 		t.Fatalf("expected classic mode when the site probe succeeds, got %q", auth.Mode)
 	}
@@ -143,7 +148,7 @@ func TestResolveAuth_AutoProbe_NonAuthFailureDoesNotFallBackToGateway(t *testing
 	defer gateway.Close()
 
 	cfg := authTestConfig(site.URL, "auto")
-	_, err := resolveAuth(t.Context(), cfg, gateway.URL)
+	_, err := resolveAuthForHosts(t.Context(), cfg, gateway.URL)
 	if err == nil {
 		t.Fatal("expected an error when the site probe fails with a non-auth status")
 	}
@@ -176,7 +181,7 @@ func TestResolveAuth_AutoProbe_BothFail_ReportsBothAttempts(t *testing.T) {
 	defer gateway.Close()
 
 	cfg := authTestConfig(site.URL, "auto")
-	_, err := resolveAuth(t.Context(), cfg, gateway.URL)
+	_, err := resolveAuthForHosts(t.Context(), cfg, gateway.URL)
 	if err == nil {
 		t.Fatal("expected an error when both credential styles fail")
 	}
@@ -210,10 +215,7 @@ func TestResolveAuth_ScopedModeExplicit_ResolvesCloudIDAndProbesGatewayOnly(t *t
 	defer gateway.Close()
 
 	cfg := authTestConfig(site.URL, "scoped")
-	auth, err := resolveAuth(t.Context(), cfg, gateway.URL)
-	if err != nil {
-		t.Fatalf("resolveAuth: %v", err)
-	}
+	auth := resolveSingleForTest(t, cfg, gateway.URL)
 	if auth.Mode != config.AuthModeScoped {
 		t.Fatalf("expected scoped mode, got %q", auth.Mode)
 	}
@@ -239,7 +241,7 @@ func TestResolveAuth_ScopedModeExplicit_CloudIDResolutionFailureAbortsBeforeCraw
 	defer gateway.Close()
 
 	cfg := authTestConfig(site.URL, "scoped")
-	_, err := resolveAuth(t.Context(), cfg, gateway.URL)
+	_, err := resolveAuthForHosts(t.Context(), cfg, gateway.URL)
 	if err == nil {
 		t.Fatal("expected an error when cloud ID resolution fails")
 	}

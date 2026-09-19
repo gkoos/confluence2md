@@ -6,21 +6,30 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/gkoos/confluence2md/internal/store"
 )
 
-// ExtractPageIDsFromADFWithStats extracts Confluence page IDs from ADF JSON by scanning
-// link mark href attributes and inlineCard/blockCard url attributes. Returns how many
-// absolute links were skipped because their host didn't match the configured Confluence
-// base URL host.
-func ExtractPageIDsFromADFWithStats(adfJSON, baseURL string) ([]int64, int) {
+// ExtractPageIDsFromADFWithStats extracts host-scoped Confluence page references
+// from ADF JSON by scanning link mark href attributes and inlineCard/blockCard url
+// attributes. sourceHost is the host of the page the ADF came from (used for
+// relative links); allowedHosts is the set of hosts considered in scope. Returns
+// how many absolute links were skipped because their host was out of scope.
+func ExtractPageIDsFromADFWithStats(adfJSON, sourceHost string, allowedHosts []string) ([]store.PageRef, int) {
 	hrefRegex := regexp.MustCompile(`"href"\s*:\s*"([^"]+)"`)
 	urlRegex := regexp.MustCompile(`"url"\s*:\s*"([^"]+)"`)
 
-	seen := make(map[int64]bool)
-	var pageIDs []int64
+	seen := make(map[string]bool)
+	var refs []store.PageRef
 	externalSkipped := 0
 
-	allowedHost := hostFromBaseURL(baseURL)
+	allowed := make(map[string]bool, len(allowedHosts))
+	for _, h := range allowedHosts {
+		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
+			allowed[h] = true
+		}
+	}
+	sourceHost = strings.ToLower(strings.TrimSpace(sourceHost))
 
 	for _, re := range []*regexp.Regexp{hrefRegex, urlRegex} {
 		for _, match := range re.FindAllStringSubmatch(adfJSON, -1) {
@@ -28,22 +37,25 @@ func ExtractPageIDsFromADFWithStats(adfJSON, baseURL string) ([]int64, int) {
 				continue
 			}
 			target := strings.TrimSpace(match[1])
-			if allowed, isExternal := isAllowedCrawlTarget(target, allowedHost); !allowed {
-				if isExternal {
+			ref, external, inScope := crawlTargetRef(target, sourceHost, allowed)
+			if !inScope {
+				if external {
 					externalSkipped++
 				}
 				continue
 			}
-
-			id := ExtractPageIDFromURL(target)
-			if id > 0 && !seen[id] {
-				seen[id] = true
-				pageIDs = append(pageIDs, id)
+			if ref.ID <= 0 {
+				continue
+			}
+			key := ref.Key()
+			if !seen[key] {
+				seen[key] = true
+				refs = append(refs, ref)
 			}
 		}
 	}
 
-	return pageIDs, externalSkipped
+	return refs, externalSkipped
 }
 
 // ExtractPageIDFromURL extracts the numeric page ID from various Confluence URL formats
@@ -116,32 +128,59 @@ func DedupPageIDs(pageIDs []int64) []int64 {
 	return result
 }
 
-func hostFromBaseURL(baseURL string) string {
-	u, err := url.Parse(strings.TrimSpace(baseURL))
-	if err != nil {
-		return ""
+// DedupPageRefs removes duplicate page references while preserving order.
+func DedupPageRefs(refs []store.PageRef) []store.PageRef {
+	seen := make(map[string]bool)
+	var result []store.PageRef
+	for _, r := range refs {
+		k := r.Key()
+		if !seen[k] {
+			seen[k] = true
+			result = append(result, r)
+		}
 	}
-	return strings.ToLower(u.Host)
+	return result
 }
 
-func isAllowedCrawlTarget(target, allowedHost string) (bool, bool) {
+// ExtractPageRefFromURL extracts the host-scoped page reference from a
+// Confluence URL. Relative links (no host) resolve to sourceHost.
+func ExtractPageRefFromURL(urlStr, sourceHost string) store.PageRef {
+	id := ExtractPageIDFromURL(urlStr)
+	if id <= 0 {
+		return store.PageRef{}
+	}
+	u, err := url.Parse(urlStr)
+	if err != nil || u.Host == "" {
+		return store.PageRef{Host: sourceHost, ID: id}
+	}
+	return store.PageRef{Host: strings.ToLower(u.Host), ID: id}
+}
+
+// crawlTargetRef classifies a link target. It returns the host-scoped page
+// reference, whether the target is external (host not in the allowed set), and
+// whether the target is in crawl scope.
+func crawlTargetRef(target, sourceHost string, allowed map[string]bool) (store.PageRef, bool, bool) {
 	u, err := url.Parse(target)
 	if err != nil {
-		// If parsing fails, treat slash-prefixed values as in-scope relative links.
-		return strings.HasPrefix(target, "/"), false
+		// Unparseable: treat slash-prefixed values as in-scope relative links.
+		if strings.HasPrefix(target, "/") {
+			return store.PageRef{Host: sourceHost, ID: ExtractPageIDFromURL(target)}, false, true
+		}
+		return store.PageRef{}, false, false
 	}
 
-	// Relative links are in-scope.
+	id := ExtractPageIDFromURL(target)
+
+	// Relative links are in-scope and belong to the source host.
 	if u.Host == "" {
-		return true, false
+		return store.PageRef{Host: sourceHost, ID: id}, false, true
 	}
 
-	if allowedHost == "" {
-		return false, true
+	host := strings.ToLower(u.Host)
+	if allowed[host] {
+		return store.PageRef{Host: host, ID: id}, false, true
 	}
-
-	isAllowed := strings.EqualFold(u.Host, allowedHost)
-	return isAllowed, !isAllowed
+	return store.PageRef{}, true, false
 }
 
 // HasChildrenMacro reports whether the ADF JSON contains a Confluence "children"
