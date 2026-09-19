@@ -46,26 +46,26 @@ func TestRequestRouting_PerMode(t *testing.T) {
 	for _, mode := range []string{"classic", "scoped"} {
 		t.Run(mode, func(t *testing.T) {
 			apiServer, apiRec := newRoutingServer(t, func(w http.ResponseWriter, r *http.Request, rec *routingRecorder) {
-				switch {
-				case r.URL.Path == "/wiki/api/v2/pages/123":
+				switch r.URL.Path {
+				case "/wiki/api/v2/pages/123":
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(`{"id":"123","title":"Page","status":"current"}`))
-				case r.URL.Path == "/wiki/api/v2/pages/123/children":
+				case "/wiki/api/v2/pages/123/children":
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(`{"results":[]}`))
-				case r.URL.Path == "/wiki/api/v2/pages/123/attachments":
+				case "/wiki/api/v2/pages/123/attachments":
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(`{"results":[]}`))
-				case r.URL.Path == "/wiki/api/v2/pages/123/footer-comments":
+				case "/wiki/api/v2/pages/123/footer-comments":
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(`{"results":[]}`))
-				case r.URL.Path == "/wiki/rest/api/search":
+				case "/wiki/rest/api/search":
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(`{"results":[],"totalSize":0}`))
-				case r.URL.Path == "/wiki/rest/api/user":
+				case "/wiki/rest/api/user":
 					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write([]byte(`{"accountId":"u1","displayName":"User One"}`))
-				case r.URL.Path == "/wiki/rest/api/content/123/child/attachment/a1/download":
+				case "/wiki/rest/api/content/123/child/attachment/a1/download":
 					w.WriteHeader(http.StatusOK)
 					_, _ = w.Write([]byte("filedata"))
 				default:
