@@ -80,14 +80,11 @@ func validate(cmd *cobra.Command, args []string) error {
 
 	printConfigSummary(cfg)
 
-	client, err := newConfluenceClient(cfg)
+	auth, err := resolveConfluenceAuth(cfg)
 	if err != nil {
 		return err
 	}
-
-	if err := verifyConfluenceAccess(client); err != nil {
-		return err
-	}
+	printCredentialStyle(auth)
 
 	fmt.Println("\nValidation successful, exiting.")
 

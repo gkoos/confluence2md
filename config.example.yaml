@@ -1,9 +1,23 @@
 confluence:
   # Your Atlassian account email
   username: you@example.com
-  # Atlassian API token
+  # Atlassian API token (classic, unrestricted; or scoped/least-privilege)
   # Generate one at: https://id.atlassian.com/manage-profile/security/api-tokens
   token: ""
+  # Credential style: auto (default) | classic | scoped
+  # - auto: detect automatically. Tries the classic (tenant-domain) endpoint
+  #   first; on an authorization failure, resolves the site's cloud ID and
+  #   retries against Atlassian's scoped-token gateway. Leave this as auto
+  #   unless detection picks the wrong style for your token.
+  # - classic: force the classic tenant-domain endpoint (today's behaviour).
+  # - scoped: force the scoped-token gateway. Required scopes are documented
+  #   in README.md; see also cloud_id below.
+  auth_mode: auto
+  # Atlassian cloud ID for your site, used only in scoped mode. Leave empty
+  # to auto-resolve it from your seed URLs (the tool queries your site's
+  # public, unauthenticated /_edge/tenant_info endpoint). Set this only if
+  # that automatic resolution is not possible for your site.
+  cloud_id: ""
 
 crawl:
   # One or more seed page URLs to start from

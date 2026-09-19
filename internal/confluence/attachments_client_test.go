@@ -30,7 +30,7 @@ func TestDownloadAttachment_BelowLimit(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestDownloadAttachment_AtLimit(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestDownloadAttachment_AboveLimit(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestDownloadAttachment_UnlimitedDownload(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestDownloadAttachment_ContentLengthExceedsLimit(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}

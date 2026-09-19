@@ -65,13 +65,52 @@ Pre-built binaries are available on the [Releases](https://github.com/gkoos/conf
 ### Requirements
 
 - **Confluence Cloud only.** This tool uses the Atlassian Document Format (ADF) API, which is exclusive to Confluence Cloud. Confluence Data Center and Server are not supported.
-- A valid Atlassian API token with read access to the target spaces
+- A valid Atlassian API token with read access to the target spaces — either a **classic (unrestricted)** token or a **scoped (least-privilege)** token, see [Credential styles](#credential-styles) below.
 
 You can generate an Atlassian API token from your Atlassian account security page:
 
 - https://id.atlassian.com/manage-profile/security/api-tokens
 
 If you run into authentication issues, see [Operations and Troubleshooting](docs/operations.md).
+
+### Credential styles
+
+Atlassian issues two styles of API token, and this tool supports both:
+
+- **Classic (unrestricted) tokens** inherit every permission the issuing account has. They are sent to your site's own domain (`https://your-org.atlassian.net`). This is the tool's original, default behaviour.
+- **Scoped (least-privilege) tokens** are restricted to a set of scopes you pick when creating the token. Atlassian serves them from a separate gateway host (`https://api.atlassian.com/ex/confluence/<cloud-id>`), not your site's own domain — a scoped token will not work if sent to your site's domain, and vice versa.
+
+`confluence.auth_mode` in `config.yaml` controls which style is used:
+
+| Value | Behaviour |
+|---|---|
+| `auto` (default) | Detect automatically: try your site's domain first; on an authorization failure, resolve your site's cloud ID and retry against the gateway. An existing `config.yaml` with no `auth_mode` set behaves exactly as before — a classic token works with no changes. |
+| `classic` | Always use your site's own domain. |
+| `scoped` | Always use the Atlassian gateway. Requires resolving your site's cloud ID — done automatically from your seed URLs unless you set `confluence.cloud_id` yourself. |
+
+The resolved style is reported in the summary line printed by `confluence2md validate` and by every crawl.
+
+Both styles use the same `confluence.username` / `confluence.token` fields (and the same `CONFLUENCE_USERNAME` / `CONFLUENCE_TOKEN` environment variables) — only the routing differs, not how credentials are supplied. `confluence.cloud_id` is only ever used in scoped mode.
+
+**Scoped tokens expire.** Atlassian requires you to set an expiry between 1 and 365 days (default one year) when creating a scoped token; classic tokens have no such expiry. If you run this tool unattended or on a schedule, plan to renew a scoped token before it expires — an expired token is reported as a rejected credential (see [Operations and Troubleshooting](docs/operations.md)), and this tool has no way to see or renew the token's expiry on your behalf.
+
+#### Required scopes
+
+If you use a scoped token, grant exactly these scopes for a full-capability crawl:
+
+| Capability | Scope(s) required | Optional? |
+|---|---|---|
+| Page content, metadata, and child-page traversal (`follow_children`) | `read:page:confluence` | No — core |
+| Link discovery (internal CQL search) | `search:confluence` | No — used to find linked pages |
+| Attachments | `read:attachment:confluence` **and** `readonly:content.attachment:confluence` | Yes — only needed with `attachments.download: true` |
+| Comments | `read:comment:confluence` | Yes — omit to crawl without comments |
+| Author name resolution | `read:confluence-user` | Yes — omit and author account IDs are kept, display names are omitted |
+
+Notes:
+
+- No space-read scope is needed — the space key comes from your seed URLs, not from a space-listing call.
+- `follow_children` needs no scope beyond `read:page:confluence`.
+- Attachments need **both** listed scopes: one for discovery, one for the download itself. Granting only one gives successful discovery and failing downloads.
 
 ### Configuration
 
@@ -85,6 +124,10 @@ confluence:
   # Atlassian API token (https://id.atlassian.com/manage-profile/security/api-tokens)
   # Can also be set via env var: CONFLUENCE_TOKEN (takes precedence over this value)
   token: ""
+  # Credential style: auto (default) | classic | scoped — see "Credential styles" above
+  auth_mode: auto
+  # Atlassian cloud ID, used only in scoped mode. Leave empty to auto-resolve.
+  cloud_id: ""
 
 crawl:
   # One or more seed page URLs or page IDs to start from

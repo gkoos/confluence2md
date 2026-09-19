@@ -21,7 +21,7 @@ func TestDownloadPageAttachments_PropagatesFileID(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := confluence.NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := confluence.NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestDownloadPageAttachments_TraversalNamesStayWithinAttachmentsDir(t *testi
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := confluence.NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := confluence.NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestDownloadPageAttachments_PartialFileCleanedUpOnError(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	client, err := confluence.NewClient(ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
+	client, err := confluence.NewClient(ts.URL, ts.URL, "u", "t", config.RetryConfig{MaxAttempts: 1, InitialBackoffMS: 1}, 60000, 1)
 	if err != nil {
 		t.Fatalf("new client: %v", err)
 	}
