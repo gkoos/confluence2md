@@ -10,6 +10,8 @@ builds:
   - id: confluence2md
     main: ./cmd/crawler
     binary: confluence2md
+    ldflags:
+      - -X main.version={{.Version}}
     env:
       - CGO_ENABLED=0
     goos:

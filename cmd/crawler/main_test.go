@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -604,6 +605,32 @@ func TestRootCommand_HasDryRunFlagWithDefaultFalse(t *testing.T) {
 
 	if flag.DefValue != "false" {
 		t.Fatalf("expected dry-run default to be false, got %q", flag.DefValue)
+	}
+}
+
+func TestVersionDefaultsToDev(t *testing.T) {
+	if version != "dev" {
+		t.Fatalf("expected default version to be %q, got %q", "dev", version)
+	}
+}
+
+func TestVersionFlagPrintsVersion(t *testing.T) {
+	oldOut := rootCmd.OutOrStdout()
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetArgs([]string{"--version"})
+
+	err := rootCmd.Execute()
+
+	rootCmd.SetOut(oldOut)
+	rootCmd.SetArgs(nil)
+
+	if err != nil {
+		t.Fatalf("expected --version to succeed, got: %v", err)
+	}
+	if got := strings.TrimSpace(buf.String()); got != version {
+		t.Fatalf("expected --version output %q, got %q", version, got)
 	}
 }
 
