@@ -260,3 +260,30 @@ attachment error count.
 **Status**: tasks.md T024 and T025 marked complete. No fallback to a
 site-domain-only attachment path is needed — the gateway path works as
 implemented.
+
+---
+
+## Multi-host crawling
+
+Crawling multiple Confluence Cloud hosts in one run required replacing the
+single implicit "internal host" (derived from the first seed) with an explicit
+composite page identity:
+
+- **`(host, pageID)` identity** (`internal/store.PageRef`) keys the BFS queue,
+  visited set, results map, the metadata `pages` map, and the link graph.
+  Numeric page IDs are only unique within a tenant, so a bare ID would collide
+  across hosts.
+- **Per-host clients** (`internal/confluence.ClientSet`) route every fetch to
+  the correct tenant, with per-host auth resolution (classic/scoped probe and
+  cloud-ID resolution). A single shared credential (`username`/`token`/
+  `auth_mode`) is applied to every host; per-host credentials are a deferred
+  enhancement and are documented as such in `README.md` and
+  `config.example.yaml`.
+- **Host-aware link scope** (`internal/links`) attributes each discovered link
+  to its target host (relative links resolve to the source page's host), so a
+  cross-host link is discovered with the correct host and fetched from the
+  correct tenant. Each `(host, pageID)` is fetched and rendered exactly once,
+  regardless of how many seeds or links reach it.
+- **Byte-identical single-host output**: when all seeds share one host,
+  metadata keys and link IDs remain bare numeric IDs (`host` is omitted from
+  `PageRecord`), preserving the previous output format.

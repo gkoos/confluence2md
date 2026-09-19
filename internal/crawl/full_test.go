@@ -13,6 +13,22 @@ import (
 	"github.com/gkoos/confluence2md/internal/store"
 )
 
+const testHost = "test.example"
+
+func testSeeds(ids ...int64) []store.PageRef {
+	out := make([]store.PageRef, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, store.PageRef{Host: testHost, ID: id})
+	}
+	return out
+}
+
+func newTestClientSet(c *confluence.Client) *confluence.ClientSet {
+	cs := confluence.NewClientSet()
+	cs.Add(c)
+	return cs
+}
+
 func TestSetNodeHandlerRejectsNil(t *testing.T) {
 	cfg := &config.Config{Crawl: config.CrawlConfig{MaxDepth: 1, Concurrency: 1, RateLimitRPM: 60000, QueueSize: 10000}}
 	cs := NewCrawlSession(nil, cfg, "")
@@ -62,21 +78,21 @@ func TestRunUsesSharedTraversalWithCustomNodeHandler(t *testing.T) {
 	visitedByHandler := make(map[int64]int)
 	var mu sync.Mutex
 
-	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
+	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
 		mu.Lock()
 		visitedByHandler[pageID]++
 		mu.Unlock()
 
 		return &NodeHandlerResult{
 			Title:         "test",
-			OutgoingLinks: graph[pageID],
+			OutgoingLinks: refsForHost(host, graph[pageID]),
 		}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
 	}
 
-	results, runErr := cs.Run(context.Background(), []int64{1})
+	results, runErr := cs.Run(context.Background(), testSeeds(1))
 	if runErr != nil {
 		t.Fatalf("Run returned error: %v", runErr)
 	}
@@ -116,17 +132,17 @@ func TestTraversalUsesMinimalDepthAcrossBranches(t *testing.T) {
 	depthByNode := make(map[int64]int)
 	var mu sync.Mutex
 
-	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
+	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
 		mu.Lock()
 		depthByNode[pageID] = depth
 		mu.Unlock()
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: graph[pageID]}
+		return &NodeHandlerResult{Title: "test", OutgoingLinks: refsForHost(host, graph[pageID])}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
 	}
 
-	if _, runErr := cs.Run(context.Background(), []int64{1}); runErr != nil {
+	if _, runErr := cs.Run(context.Background(), testSeeds(1)); runErr != nil {
 		t.Fatalf("Run returned error: %v", runErr)
 	}
 
@@ -147,24 +163,24 @@ func TestRunStoresDeletedNodeWithoutEnqueuingChildren(t *testing.T) {
 	cs := NewCrawlSession(nil, cfg, "")
 
 	visited := make(map[int64]int)
-	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
+	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
 		visited[pageID]++
 		switch pageID {
 		case 1:
-			page := &CrawledPage{ID: pageID, Depth: depth}
-			return &NodeHandlerResult{Page: page, OutgoingLinks: []int64{2}}
+			page := &CrawledPage{ID: pageID, Host: host, Depth: depth}
+			return &NodeHandlerResult{Page: page, OutgoingLinks: refsForHost(host, []int64{2})}
 		case 2:
 			// Include an outgoing link deliberately: deletion must take precedence.
-			return &NodeHandlerResult{Deleted: true, OutgoingLinks: []int64{3}, Title: "Gone"}
+			return &NodeHandlerResult{Deleted: true, OutgoingLinks: refsForHost(host, []int64{3}), Title: "Gone"}
 		default:
-			return &NodeHandlerResult{Page: &CrawledPage{ID: pageID, Depth: depth}}
+			return &NodeHandlerResult{Page: &CrawledPage{ID: pageID, Host: host, Depth: depth}}
 		}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
 	}
 
-	results, runErr := cs.Run(context.Background(), []int64{1})
+	results, runErr := cs.Run(context.Background(), testSeeds(1))
 	if runErr != nil {
 		t.Fatalf("Run returned error: %v", runErr)
 	}
@@ -174,7 +190,7 @@ func TestRunStoresDeletedNodeWithoutEnqueuingChildren(t *testing.T) {
 	if visited[3] != 0 {
 		t.Fatalf("expected child of deleted node not to be visited, got %d visits", visited[3])
 	}
-	deletedPage, ok := results[2]
+	deletedPage, ok := results[store.PageKey(testHost, 2, true)]
 	if !ok || deletedPage == nil || !deletedPage.Deleted {
 		t.Fatalf("expected deleted node in crawl results, got %#v", deletedPage)
 	}
@@ -225,13 +241,19 @@ func TestIsDirtyComparedToPrevious(t *testing.T) {
 	}
 }
 
-func TestParseOutgoingLinkIDs(t *testing.T) {
-	ids := parseOutgoingLinkIDs([]string{"123", "456", "123", "abc", ""})
-	if len(ids) != 2 {
-		t.Fatalf("expected 2 parsed IDs, got %d", len(ids))
+func TestParseOutgoingLinkRefs(t *testing.T) {
+	refs := parseOutgoingLinkRefs([]string{"123", "456", "123", "abc", "", "company2.atlassian.net/789"}, testHost)
+	if len(refs) != 3 {
+		t.Fatalf("expected 3 parsed refs, got %d", len(refs))
 	}
-	if ids[0] != 123 || ids[1] != 456 {
-		t.Fatalf("unexpected parsed IDs: %#v", ids)
+	if refs[0].ID != 123 || refs[0].Host != testHost {
+		t.Fatalf("unexpected parsed ref 0: %#v", refs[0])
+	}
+	if refs[1].ID != 456 || refs[1].Host != testHost {
+		t.Fatalf("unexpected parsed ref 1: %#v", refs[1])
+	}
+	if refs[2].ID != 789 || refs[2].Host != "company2.atlassian.net" {
+		t.Fatalf("unexpected parsed ref 2: %#v", refs[2])
 	}
 }
 
@@ -258,12 +280,12 @@ func TestProcessUpdatesNodeTreatsNotFoundAsDeleted(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
-	cs := NewCrawlSession(client, cfg, "SPACE")
+	cs := NewCrawlSession(newTestClientSet(client), cfg, "SPACE")
 	cs.EnableUpdatesMode(map[string]store.PageRecord{
 		"42": {ID: "42", Title: "Deleted page"},
 	})
 
-	result := cs.processUpdatesNode(context.Background(), 42, 3)
+	result := cs.processUpdatesNode(context.Background(), client.Host(), 42, 3)
 	if result == nil || !result.Deleted {
 		t.Fatalf("expected deleted node result, got %#v", result)
 	}
@@ -305,12 +327,12 @@ func TestProcessUpdatesNodeTreatsTrashedStatusAsDeleted(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
-	cs := NewCrawlSession(client, cfg, "SPACE")
+	cs := NewCrawlSession(newTestClientSet(client), cfg, "SPACE")
 	cs.EnableUpdatesMode(map[string]store.PageRecord{
 		"42": {ID: "42", Title: "Page To Be Deleted"},
 	})
 
-	result := cs.processUpdatesNode(context.Background(), 42, 1)
+	result := cs.processUpdatesNode(context.Background(), client.Host(), 42, 1)
 	if result == nil || !result.Deleted {
 		t.Fatalf("expected trashed page to produce a deleted result, got %#v", result)
 	}
@@ -348,12 +370,12 @@ func TestProcessUpdatesNodeFallsBackToFullFetchForTransientError(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
-	cs := NewCrawlSession(client, cfg, "SPACE")
+	cs := NewCrawlSession(newTestClientSet(client), cfg, "SPACE")
 	cs.EnableUpdatesMode(map[string]store.PageRecord{
 		"42": {ID: "42", Title: "Existing page"},
 	})
 
-	result := cs.processUpdatesNode(context.Background(), 42, 1)
+	result := cs.processUpdatesNode(context.Background(), client.Host(), 42, 1)
 	if result == nil || result.Deleted {
 		t.Fatalf("expected non-deleted fallback result, got %#v", result)
 	}
@@ -375,7 +397,7 @@ func TestProcessFullNodeTreatsTrashedStatusAsDeleted(t *testing.T) {
 	defer server.Close()
 
 	cs := newTestCrawlSession(t, server.URL)
-	result := cs.processFullNode(context.Background(), 42, 2)
+	result := cs.processFullNode(context.Background(), cs.clients.Hosts()[0], 42, 2)
 
 	assertDeletedNodeResult(t, result, 42, 2, "Deleted page")
 	if requestCount != 1 {
@@ -392,7 +414,7 @@ func TestProcessFullNodeTreatsNotFoundAsDeleted(t *testing.T) {
 	defer server.Close()
 
 	cs := newTestCrawlSession(t, server.URL)
-	result := cs.processFullNode(context.Background(), 42, 2)
+	result := cs.processFullNode(context.Background(), cs.clients.Hosts()[0], 42, 2)
 
 	assertDeletedNodeResult(t, result, 42, 2, "")
 	if requestCount != 1 {
@@ -407,7 +429,7 @@ func TestProcessFullNodeKeepsTransientFailureAsError(t *testing.T) {
 	defer server.Close()
 
 	cs := newTestCrawlSession(t, server.URL)
-	result := cs.processFullNode(context.Background(), 42, 2)
+	result := cs.processFullNode(context.Background(), cs.clients.Hosts()[0], 42, 2)
 
 	if result == nil || result.Deleted {
 		t.Fatalf("expected non-deleted error result, got %#v", result)
@@ -429,8 +451,8 @@ func TestProcessFullNodeReportsPermissionDeniedAsNonAbortingError(t *testing.T) 
 	defer server.Close()
 
 	cs := newTestCrawlSession(t, server.URL)
-	cs.client.SetMode("scoped") // exercise the missing-scope classification path (FR-009/FR-010)
-	result := cs.processFullNode(context.Background(), 42, 2)
+	cs.clients.ForHost(cs.clients.Hosts()[0]).SetMode("scoped") // exercise the missing-scope classification path (FR-009/FR-010)
+	result := cs.processFullNode(context.Background(), cs.clients.Hosts()[0], 42, 2)
 
 	if result == nil || result.Deleted {
 		t.Fatalf("expected a non-deleted error result for a 403, got %#v", result)
@@ -460,7 +482,7 @@ func TestProcessUpdatesNodeHandlesDeletionBetweenStateAndFullFetch(t *testing.T)
 	cs.EnableUpdatesMode(map[string]store.PageRecord{
 		"42": {ID: "42", Title: "Page", Version: 1},
 	})
-	result := cs.processUpdatesNode(context.Background(), 42, 1)
+	result := cs.processUpdatesNode(context.Background(), cs.clients.Hosts()[0], 42, 1)
 
 	assertDeletedNodeResult(t, result, 42, 1, "")
 	if requestCount != 2 {
@@ -484,7 +506,7 @@ func newTestCrawlSession(t *testing.T, serverURL string) *CrawlSession {
 	if err != nil {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
-	return NewCrawlSession(client, cfg, "SPACE")
+	return NewCrawlSession(newTestClientSet(client), cfg, "SPACE")
 }
 
 func assertDeletedNodeResult(t *testing.T, result *NodeHandlerResult, pageID int64, depth int, title string) {
@@ -519,14 +541,14 @@ func TestRun_FailsLoudlyWhenQueueSaturates(t *testing.T) {
 		2: {}, 3: {}, 4: {}, 5: {},
 	}
 
-	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: graph[pageID]}
+	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
+		return &NodeHandlerResult{Title: "test", OutgoingLinks: refsForHost(host, graph[pageID])}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
 	}
 
-	_, runErr := cs.Run(context.Background(), []int64{1})
+	_, runErr := cs.Run(context.Background(), testSeeds(1))
 	if runErr == nil {
 		t.Fatal("expected queue saturation error, got nil")
 	}
@@ -549,8 +571,8 @@ func TestRun_ReturnsCancelledErrorWithPreCancelledContext(t *testing.T) {
 	}
 	cs := NewCrawlSession(nil, cfg, "")
 
-	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: []int64{}}
+	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
+		return &NodeHandlerResult{Title: "test", OutgoingLinks: []store.PageRef{}}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
@@ -559,7 +581,7 @@ func TestRun_ReturnsCancelledErrorWithPreCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel before Run is called
 
-	_, runErr := cs.Run(ctx, []int64{1, 2, 3})
+	_, runErr := cs.Run(ctx, testSeeds(1, 2, 3))
 	if runErr == nil {
 		t.Fatal("expected cancellation error, got nil")
 	}
@@ -582,7 +604,7 @@ func TestRun_ReturnsCancelledErrorWhenCancelledMidCrawl(t *testing.T) {
 	started := make(chan struct{})
 	proceed := make(chan struct{})
 
-	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
+	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
 		// Signal that at least one node started processing, then block until released.
 		select {
 		case started <- struct{}{}:
@@ -592,7 +614,7 @@ func TestRun_ReturnsCancelledErrorWhenCancelledMidCrawl(t *testing.T) {
 		case <-proceed:
 		case <-ctx.Done():
 		}
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: []int64{}}
+		return &NodeHandlerResult{Title: "test", OutgoingLinks: []store.PageRef{}}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
@@ -603,7 +625,7 @@ func TestRun_ReturnsCancelledErrorWhenCancelledMidCrawl(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, runErr := cs.Run(ctx, []int64{1})
+		_, runErr := cs.Run(ctx, testSeeds(1))
 		done <- runErr
 	}()
 
@@ -637,14 +659,14 @@ func TestRun_DoesNotFailWhenQueueHasCapacity(t *testing.T) {
 		2: {}, 3: {}, 4: {}, 5: {},
 	}
 
-	err := cs.SetNodeHandler(func(ctx context.Context, pageID int64, depth int) *NodeHandlerResult {
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: graph[pageID]}
+	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
+		return &NodeHandlerResult{Title: "test", OutgoingLinks: refsForHost(host, graph[pageID])}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
 	}
 
-	_, runErr := cs.Run(context.Background(), []int64{1})
+	_, runErr := cs.Run(context.Background(), testSeeds(1))
 	if runErr != nil {
 		t.Fatalf("expected no queue saturation error, got: %v", runErr)
 	}

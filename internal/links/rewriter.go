@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/gkoos/confluence2md/internal/store"
@@ -24,7 +23,7 @@ type RewriteStats struct {
 
 // RewriteCrawledPageLinks rewrites links to crawled Confluence pages into relative
 // local Markdown paths, leaving unresolved/external links unchanged.
-func RewriteCrawledPageLinks(outputDir string, pages map[string]store.PageRecord) (RewriteStats, error) {
+func RewriteCrawledPageLinks(outputDir string, pages map[string]store.PageRecord, qualify bool) (RewriteStats, error) {
 	stats := RewriteStats{}
 
 	idToLocal := make(map[string]string, len(pages))
@@ -39,6 +38,7 @@ func RewriteCrawledPageLinks(outputDir string, pages map[string]store.PageRecord
 			continue
 		}
 
+		host := record.Host
 		srcPath := filepath.Join(outputDir, record.LocalPath)
 		srcDir := filepath.Dir(srcPath)
 
@@ -59,12 +59,12 @@ func RewriteCrawledPageLinks(outputDir string, pages map[string]store.PageRecord
 				return match
 			}
 			target := strings.TrimSpace(sub[1])
-			targetID := ExtractPageIDFromURL(target)
-			if targetID <= 0 {
+			targetRef := ExtractPageRefFromURL(target, host)
+			if targetRef.ID <= 0 {
 				return match
 			}
 
-			targetLocal, ok := idToLocal[strconv.FormatInt(targetID, 10)]
+			targetLocal, ok := idToLocal[store.PageKey(targetRef.Host, targetRef.ID, qualify)]
 			if !ok {
 				return match
 			}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gkoos/confluence2md/internal/config"
@@ -130,43 +131,87 @@ type AuthResolution struct {
 	Client     *Client
 }
 
-// ResolveAuth determines the effective credential style for a run and
-// returns a Client already fixed to that style, validated by fetching the
-// first configured seed page (research R7, FR-008) — the exact request the
-// crawl's own first fetch will make, so a successful resolution reliably
-// predicts the crawl can begin (SC-002).
-//
-// Behaviour by cfg.EffectiveAuthMode():
-//
-//   - "classic": probe the site domain only. Any failure is reported as a
-//     rejected credential (research R8).
-//   - "scoped": resolve the cloud ID (config override, or the site's
-//     unauthenticated tenant_info endpoint) and probe the gateway only. A
-//     cloud-ID resolution failure aborts before any crawl work, naming the
-//     site and the resolution step (spec Edge Cases, FR-006).
-//   - "auto" (default): probe the site domain first. On success, mode is
-//     "classic" — today's only behaviour, so an existing config.yaml with no
-//     auth_mode takes today's path unchanged (FR-002, FR-018, SC-003). On an
-//     authorization failure (401/403), resolve the cloud ID and probe the
-//     gateway. First success fixes the mode for the run. A non-auth failure
-//     (network error, 5xx, etc.) on the site probe is NOT treated as a
-//     signal to try the gateway — only a genuine authorization failure is.
-//     If both attempts fail, both are reported (research R2).
-func ResolveAuth(ctx context.Context, cfg *config.Config) (*AuthResolution, error) {
-	return resolveAuth(ctx, cfg, gatewayBaseURL)
+// AuthResolutions is the outcome of resolving credential style for every
+// distinct host in a crawl. Each host is validated independently and gets its
+// own Client, so cross-host links are fetched from the correct tenant.
+type AuthResolutions struct {
+	ByHost map[string]*AuthResolution
+	Order  []string
 }
 
-// resolveAuth is ResolveAuth's implementation, parameterized on the gateway
-// host so tests can substitute a local httptest server and never make a live
-// request to api.atlassian.com (constitution Principle III: no test may
-// require live network access). ResolveAuth always passes the real
-// gatewayBaseURL constant.
-func resolveAuth(ctx context.Context, cfg *config.Config, gatewayBase string) (*AuthResolution, error) {
+// Clients returns a ClientSet built from the resolved per-host clients.
+func (r *AuthResolutions) Clients() *ClientSet {
+	cs := NewClientSet()
+	for _, host := range r.Order {
+		cs.Add(r.ByHost[host].Client)
+	}
+	return cs
+}
+
+// ForHost returns the resolution for the given lower-cased host.
+func (r *AuthResolutions) ForHost(host string) *AuthResolution {
+	return r.ByHost[host]
+}
+
+// ResolveAuth determines the effective credential style for every distinct
+// seed host and returns a per-host client, each validated by fetching a
+// representative seed page (research R7, FR-008). See resolveSingleHost for
+// the per-host classic/scoped/auto behaviour.
+func ResolveAuth(ctx context.Context, cfg *config.Config) (*AuthResolutions, error) {
+	return resolveAuthForHosts(ctx, cfg, gatewayBaseURL)
+}
+
+// resolveAuthForHosts is ResolveAuth's implementation, parameterized on the
+// gateway host so tests can substitute a local httptest server and never make
+// a live request to api.atlassian.com (constitution Principle III).
+func resolveAuthForHosts(ctx context.Context, cfg *config.Config, gatewayBase string) (*AuthResolutions, error) {
 	if len(cfg.Crawl.Seeds) == 0 {
 		return nil, fmt.Errorf("resolve auth mode: crawl.seeds must contain at least one URL")
 	}
-	seed := cfg.Crawl.Seeds[0]
-	siteURL := cfg.SiteURL()
+
+	res := &AuthResolutions{ByHost: make(map[string]*AuthResolution)}
+	for _, site := range cfg.SiteURLs() {
+		host := hostOfURL(site)
+		if host == "" {
+			continue
+		}
+		seed := firstSeedForHost(cfg.Crawl.Seeds, host)
+		if seed == "" {
+			continue
+		}
+		r, err := resolveSingleHost(ctx, cfg, gatewayBase, site, seed)
+		if err != nil {
+			return nil, err
+		}
+		res.ByHost[host] = r
+		res.Order = append(res.Order, host)
+	}
+	if len(res.Order) == 0 {
+		return nil, fmt.Errorf("resolve auth mode: no resolvable seed hosts")
+	}
+	return res, nil
+}
+
+func hostOfURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Host)
+}
+
+func firstSeedForHost(seeds []string, host string) string {
+	for _, seed := range seeds {
+		if hostOfURL(seed) == host {
+			return seed
+		}
+	}
+	return ""
+}
+
+// resolveSingleHost resolves the credential style for a single site and
+// returns a Client validated against the representative seed page.
+func resolveSingleHost(ctx context.Context, cfg *config.Config, gatewayBase, siteURL, seed string) (*AuthResolution, error) {
 
 	probeClassic := func() (*Client, error) {
 		client, err := NewClient(siteURL, siteURL, cfg.Confluence.Username, cfg.Confluence.Token, cfg.Retry, cfg.Crawl.RateLimitRPM, cfg.Crawl.Concurrency)

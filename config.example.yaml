@@ -4,6 +4,10 @@ confluence:
   # Atlassian API token (classic, unrestricted; or scoped/least-privilege)
   # Generate one at: https://id.atlassian.com/manage-profile/security/api-tokens
   token: ""
+  # A single credential (username/token/auth_mode) is shared across every seed
+  # host. To crawl multiple Confluence Cloud instances in one run, the same
+  # account/token must have read access on all of them. Per-host credentials
+  # are not supported yet.
   # Credential style: auto (default) | classic | scoped
   # - auto: detect automatically. Tries the classic (tenant-domain) endpoint
   #   first; on an authorization failure, resolves the site's cloud ID and
@@ -20,7 +24,10 @@ confluence:
   cloud_id: ""
 
 crawl:
-  # One or more seed page URLs to start from
+  # One or more seed page URLs to start from. Seeds may span multiple
+  # Confluence Cloud hosts (e.g. company1.atlassian.net and
+  # company2.atlassian.net): each host is crawled independently, and the
+  # cross-host link graph is followed and deduplicated as one crawl.
   seeds:
     - https://your-org.atlassian.net/wiki/spaces/SPACE/pages/123456/Page+Title
   # Maximum link-follow depth from each seed (0 = seed pages only)

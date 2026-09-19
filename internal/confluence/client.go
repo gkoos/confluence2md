@@ -138,6 +138,15 @@ func (c *Client) SiteURL() string {
 	return c.siteURL
 }
 
+// Host returns the lower-cased tenant host this client is bound to.
+func (c *Client) Host() string {
+	u, err := url.Parse(c.siteURL)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Host)
+}
+
 // APIBaseURL returns the base URL every request is actually sent to.
 func (c *Client) APIBaseURL() string {
 	return c.apiBaseURL

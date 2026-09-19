@@ -5,7 +5,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gkoos/confluence2md/internal/store"
@@ -17,10 +16,10 @@ func snapshotPageRecords(src map[string]store.PageRecord) map[string]store.PageR
 	return out
 }
 
-func int64SliceToStringIDs(ids []int64) []string {
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		out = append(out, strconv.FormatInt(id, 10))
+func pageRefsToStringIDs(refs []store.PageRef, qualify bool) []string {
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, store.PageKey(r.Host, r.ID, qualify))
 	}
 	return out
 }

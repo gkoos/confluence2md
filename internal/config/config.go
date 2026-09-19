@@ -194,9 +194,18 @@ func (c *Config) EffectiveAuthMode() string {
 // canonical webui URL, link-scope host matching, link absolutisation — and
 // MUST NOT vary with AuthMode or credential style (research R5, FR-013).
 // Everything that issues an actual API request must use APIBaseURL instead.
+//
+// For multi-host crawls this returns the primary (first seed) site only; use
+// SiteURLs/SiteHosts to enumerate every distinct site.
 func (c *Config) SiteURL() string {
-	u, err := url.Parse(c.Crawl.Seeds[0])
-	if err != nil {
+	return siteURLFromSeed(c.Crawl.Seeds[0])
+}
+
+// siteURLFromSeed derives the tenant site URL from a seed URL, e.g.
+// https://org.atlassian.net/wiki/spaces/... -> https://org.atlassian.net/wiki.
+func siteURLFromSeed(seed string) string {
+	u, err := url.Parse(seed)
+	if err != nil || u.Scheme == "" || u.Host == "" {
 		return ""
 	}
 	// Keep scheme + host + /wiki prefix
@@ -205,6 +214,50 @@ func (c *Config) SiteURL() string {
 		return fmt.Sprintf("%s://%s/%s", u.Scheme, u.Host, parts[1])
 	}
 	return fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+}
+
+// SiteURLs returns the distinct site URLs across all seeds, in seed order.
+func (c *Config) SiteURLs() []string {
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(c.Crawl.Seeds))
+	for _, seed := range c.Crawl.Seeds {
+		s := siteURLFromSeed(seed)
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}
+
+// SiteHosts returns the distinct lower-cased tenant hosts across all seeds,
+// in seed order.
+func (c *Config) SiteHosts() []string {
+	seen := make(map[string]bool)
+	out := make([]string, 0, len(c.Crawl.Seeds))
+	for _, site := range c.SiteURLs() {
+		u, err := url.Parse(site)
+		if err != nil || u.Host == "" {
+			continue
+		}
+		h := strings.ToLower(u.Host)
+		if seen[h] {
+			continue
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	return out
+}
+
+// HostForSeed returns the lower-cased tenant host for a seed URL.
+func HostForSeed(seed string) string {
+	u, err := url.Parse(seed)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Host)
 }
 
 // APIBaseURL returns the request target for API calls: the site URL in

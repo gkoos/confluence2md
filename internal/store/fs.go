@@ -14,6 +14,7 @@ import (
 // PageRecord represents a single page entry in metadata.json.
 type PageRecord struct {
 	ID                  string    `json:"id"`
+	Host                string    `json:"host,omitempty"` // tenant host; empty for single-host crawls
 	Title               string    `json:"title"`
 	LocalPath           string    `json:"local_path"`
 	Version             int       `json:"version"`

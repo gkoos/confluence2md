@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -41,11 +40,11 @@ func rebuildIncomingLinks(pagesByID map[string]store.PageRecord) {
 	}
 }
 
-func finalizeTraversalOutput(outputDir string, w *store.Writer) (links.RewriteStats, error) {
+func finalizeTraversalOutput(outputDir string, w *store.Writer, qualify bool) (links.RewriteStats, error) {
 	pagesByID := w.GetPages()
 	rebuildIncomingLinks(pagesByID)
 
-	stats, err := links.RewriteCrawledPageLinks(outputDir, pagesByID)
+	stats, err := links.RewriteCrawledPageLinks(outputDir, pagesByID, qualify)
 	if err != nil {
 		return stats, err
 	}
@@ -129,16 +128,16 @@ type artifactReconcileStats struct {
 	Deleted int
 }
 
-func pruneMetadataToCrawledSet(pages map[string]store.PageRecord, crawlResults map[int64]*crawl.CrawledPage) {
+func pruneMetadataToCrawledSet(pages map[string]store.PageRecord, crawlResults map[string]*crawl.CrawledPage, qualify bool) {
 	if len(pages) == 0 {
 		return
 	}
 	reachable := make(map[string]struct{}, len(crawlResults))
-	for pageID, crawledPage := range crawlResults {
+	for _, crawledPage := range crawlResults {
 		if crawledPage == nil || crawledPage.Deleted {
 			continue
 		}
-		reachable[strconv.FormatInt(pageID, 10)] = struct{}{}
+		reachable[store.PageKey(crawledPage.Host, crawledPage.ID, qualify)] = struct{}{}
 	}
 	for pageID := range pages {
 		if _, ok := reachable[pageID]; !ok {
