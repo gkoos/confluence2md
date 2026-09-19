@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0](https://github.com/gkoos/confluence2md/compare/v1.3.5...v1.4.0) (2026-09-19)
+
+
+### Features
+
+* add --version flag and startup version log ([#100](https://github.com/gkoos/confluence2md/issues/100)) ([e076322](https://github.com/gkoos/confluence2md/commit/e076322466a4382435b4aaf2273b0c2c2f92af49)), closes [#96](https://github.com/gkoos/confluence2md/issues/96)
+* support Atlassian API tokens with scopes ([#98](https://github.com/gkoos/confluence2md/issues/98)) ([26cc788](https://github.com/gkoos/confluence2md/commit/26cc788e49fd36b68b3f40ff01c521f9a4eea67b))
+
 ## [1.3.5](https://github.com/gkoos/confluence2md/compare/v1.3.4...v1.3.5) (2026-08-17)
 
 
