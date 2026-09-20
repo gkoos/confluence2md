@@ -3,7 +3,6 @@ package crawl
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +26,6 @@ type CrawledPage struct {
 	Comments             []confluence.CommentData
 	CommentCount         int
 	CommentFetchError    string
-	RawADF               string // raw Confluence ADF JSON body
 	CanonicalURL         string
 	SpaceKey             string
 	OutgoingLinks        []store.PageRef // host-scoped refs of all linked pages
@@ -64,14 +62,13 @@ type queueDropSample struct {
 const maxQueueDropSamples = 20
 
 // NodeHandlerResult is the mode-specific output produced per traversed node.
-// The traversal engine only depends on OutgoingLinks, FetchError, and Deleted.
+// The traversal engine only depends on FetchError and Deleted directly: the link
+// set, title and external-skip count are read from Page when a handler emits one,
+// so a page payload is the single source of truth for those values.
 type NodeHandlerResult struct {
-	Page                 *CrawledPage
-	OutgoingLinks        []store.PageRef
-	FetchError           string
-	Deleted              bool
-	Title                string
-	ExternalLinksSkipped int
+	Page       *CrawledPage
+	FetchError string
+	Deleted    bool
 }
 
 // CrawlNodeHandler processes a single traversed node.
@@ -253,9 +250,13 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 			}
 		}
 
-		title := result.Title
-		if title == "" && result.Page != nil {
+		var title string
+		var links []store.PageRef
+		externalSkipped := 0
+		if result.Page != nil {
 			title = result.Page.Title
+			links = result.Page.OutgoingLinks
+			externalSkipped = result.Page.ExternalLinksSkipped
 		}
 
 		key := store.PageKey(item.host, item.pageID)
@@ -275,8 +276,8 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 
 		childCount := 0
 		if !result.Deleted && result.FetchError == "" && item.depth < cs.maxDepth {
-			cs.enqueueChildren(item.depth, result.OutgoingLinks)
-			childCount = len(result.OutgoingLinks)
+			cs.enqueueChildren(item.depth, links)
+			childCount = len(links)
 		}
 
 		depthPrefix := fmt.Sprintf("D%d", item.depth)
@@ -286,7 +287,7 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 			fmt.Printf("  [%s] DEL  %d — %s\n", depthPrefix, item.pageID, title)
 		} else {
 			fmt.Printf("  [%s] %3d/%-3d  %d — %s  (+%d links, ext-skip:%d, queue:%d)\n",
-				depthPrefix, fetched, visited, item.pageID, title, childCount, result.ExternalLinksSkipped, len(cs.queue))
+				depthPrefix, fetched, visited, item.pageID, title, childCount, externalSkipped, len(cs.queue))
 		}
 
 		cs.pendingWork.Done()
@@ -337,7 +338,6 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID
 	page.CanonicalURL = fetchedPage.Links.Webui
 	page.Version = fetchedPage.Version.Number
 	page.SpaceKey = fetchedPage.Space.Key
-	page.RawADF = fetchedPage.Body.ADF.Value
 
 	// Temporal metadata
 	page.CreatedAt = fetchedPage.CreatedAt
@@ -376,7 +376,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID
 			page.AttachmentFetchError = fmt.Sprintf("attachments fetch failed: %v", err)
 		} else {
 			page.Attachments = attachments
-			page.AttachmentSignature = attachmentSignatureFromData(attachments)
+			page.AttachmentSignature = confluence.ComputeAttachmentSignature(attachments)
 		}
 	}
 
@@ -445,7 +445,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID
 		markdown, err := convert.ToMarkdown(fetchedPage.Body.ADF.Value)
 		if err != nil {
 			page.FetchError = fmt.Sprintf("convert failed: %v", err)
-			return &NodeHandlerResult{Page: page, FetchError: page.FetchError, Title: page.Title}
+			return &NodeHandlerResult{Page: page, FetchError: page.FetchError}
 		}
 
 		// Prepend page title as H1 only when it is not already present.
@@ -457,11 +457,8 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID
 	}
 
 	return &NodeHandlerResult{
-		Page:                 page,
-		OutgoingLinks:        page.OutgoingLinks,
-		FetchError:           page.FetchError,
-		Title:                page.Title,
-		ExternalLinksSkipped: page.ExternalLinksSkipped,
+		Page:       page,
+		FetchError: page.FetchError,
 	}
 }
 
@@ -539,12 +536,7 @@ func (cs *CrawlSession) processUpdatesNode(ctx context.Context, host string, pag
 		cleanPage.AttachmentSignature = state.AttachmentSignature
 	}
 
-	return &NodeHandlerResult{
-		Page:                 cleanPage,
-		OutgoingLinks:        outgoing,
-		Title:                cleanPage.Title,
-		ExternalLinksSkipped: 0,
-	}
+	return &NodeHandlerResult{Page: cleanPage}
 }
 
 func deletedNodeResult(host string, pageID int64, depth int, title string) *NodeHandlerResult {
@@ -559,7 +551,6 @@ func deletedNodeResult(host string, pageID int64, depth int, title string) *Node
 	return &NodeHandlerResult{
 		Page:    page,
 		Deleted: true,
-		Title:   title,
 	}
 }
 
@@ -619,25 +610,6 @@ func parseOutgoingLinkRefs(ids []string, defaultHost string) []store.PageRef {
 	return links.DedupPageRefs(out)
 }
 
-func attachmentSignatureFromData(attachments []confluence.AttachmentData) string {
-	if len(attachments) == 0 {
-		return "none"
-	}
-
-	parts := make([]string, 0, len(attachments))
-	for _, a := range attachments {
-		parts = append(parts, strings.Join([]string{
-			strings.TrimSpace(a.ID),
-			strings.TrimSpace(a.Filename),
-			strings.TrimSpace(a.MediaType),
-			strconv.FormatInt(a.FileSizeBytes, 10),
-		}, "|"))
-	}
-
-	sort.Strings(parts)
-	return strings.Join(parts, ";")
-}
-
 func hasLeadingTitleH1(markdown, title string) bool {
 	md := strings.TrimSpace(strings.TrimPrefix(markdown, "\ufeff"))
 	title = strings.TrimSpace(title)
@@ -688,8 +660,19 @@ func (cs *CrawlSession) enqueueChildren(parentDepth int, children []store.PageRe
 	}
 }
 
+// CrawlStats is the typed snapshot of a crawl's counters and depth spread.
+type CrawlStats struct {
+	TotalPages            int
+	TotalLinks            int
+	UniqueInternalTargets int
+	ExternalLinksSkipped  int
+	QueueDrops            int
+	QueueDropSampleCount  int
+	DepthDistribution     map[int]int
+}
+
 // Stats returns crawl statistics
-func (cs *CrawlSession) Stats() map[string]any {
+func (cs *CrawlSession) Stats() CrawlStats {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
@@ -706,13 +689,13 @@ func (cs *CrawlSession) Stats() map[string]any {
 		externalSkipped += page.ExternalLinksSkipped
 	}
 
-	return map[string]any{
-		"total_pages":             len(cs.results),
-		"total_links":             linkCount,
-		"unique_internal_targets": len(uniqueInternalTargets),
-		"external_links_skipped":  externalSkipped,
-		"queue_drops":             cs.enqueueDrops,
-		"queue_drop_sample_count": len(cs.enqueueDropSample),
-		"depth_distribution":      depthDist,
+	return CrawlStats{
+		TotalPages:            len(cs.results),
+		TotalLinks:            linkCount,
+		UniqueInternalTargets: len(uniqueInternalTargets),
+		ExternalLinksSkipped:  externalSkipped,
+		QueueDrops:            cs.enqueueDrops,
+		QueueDropSampleCount:  len(cs.enqueueDropSample),
+		DepthDistribution:     depthDist,
 	}
 }

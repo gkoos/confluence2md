@@ -1,5 +1,10 @@
 package convert
 
+import (
+	"cmp"
+	"slices"
+)
+
 // ApplyMarks applies ADF marks to text in the correct order (innermost first).
 // Order: code → subsup → link → strong → em → strike → underline → textColor (ignored)
 func ApplyMarks(text string, marks []ADFMark) string {
@@ -32,12 +37,11 @@ func ApplyMarks(text string, marks []ADFMark) string {
 		}
 		indexed = append(indexed, indexedMark{m, o})
 	}
-	// Stable sort by priority
-	for i := 1; i < len(indexed); i++ {
-		for j := i; j > 0 && indexed[j].order < indexed[j-1].order; j-- {
-			indexed[j], indexed[j-1] = indexed[j-1], indexed[j]
-		}
-	}
+	// Stable sort by priority: marks with equal priority (a repeated mark, or
+	// unknown types sharing the fallback priority) keep their original order.
+	slices.SortStableFunc(indexed, func(a, b indexedMark) int {
+		return cmp.Compare(a.order, b.order)
+	})
 
 	result := text
 	for _, im := range indexed {

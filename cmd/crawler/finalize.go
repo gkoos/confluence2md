@@ -146,7 +146,13 @@ func pruneMetadataToCrawledSet(pages map[string]store.PageRecord, crawlResults m
 	}
 }
 
-func reconcileManagedArtifacts(outputDir string, oldPages, newPages map[string]store.PageRecord) (artifactReconcileStats, error) {
+// reconcileManagedArtifacts removes artifacts recorded by a previous crawl that
+// the current crawl no longer produces.
+//
+// In dry-run mode nothing is removed and every stale artifact is counted, which
+// keeps the preview an upper bound; the real run counts only files it actually
+// removed, skipping paths that are already gone from disk.
+func reconcileManagedArtifacts(outputDir string, oldPages, newPages map[string]store.PageRecord, dryRun bool) (artifactReconcileStats, error) {
 	stats := artifactReconcileStats{}
 	oldSet := managedArtifactSet(oldPages)
 	newSet := managedArtifactSet(newPages)
@@ -155,6 +161,12 @@ func reconcileManagedArtifacts(outputDir string, oldPages, newPages map[string]s
 		if _, keep := newSet[relPath]; keep {
 			continue
 		}
+
+		if dryRun {
+			stats.Deleted++
+			continue
+		}
+
 		absPath := filepath.Join(outputDir, filepath.FromSlash(relPath))
 		if err := os.Remove(absPath); err != nil {
 			if os.IsNotExist(err) {
@@ -166,21 +178,6 @@ func reconcileManagedArtifacts(outputDir string, oldPages, newPages map[string]s
 	}
 
 	return stats, nil
-}
-
-func previewManagedArtifactReconcile(oldPages, newPages map[string]store.PageRecord) artifactReconcileStats {
-	stats := artifactReconcileStats{}
-	oldSet := managedArtifactSet(oldPages)
-	newSet := managedArtifactSet(newPages)
-
-	for relPath := range oldSet {
-		if _, keep := newSet[relPath]; keep {
-			continue
-		}
-		stats.Deleted++
-	}
-
-	return stats
 }
 
 func managedArtifactSet(pages map[string]store.PageRecord) map[string]struct{} {

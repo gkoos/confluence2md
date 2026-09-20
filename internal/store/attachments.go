@@ -50,36 +50,13 @@ func DownloadPageAttachments(
 
 	results := make([]AttachmentResult, 0, len(attachments))
 	for _, a := range attachments {
-		result := AttachmentResult{
-			OriginalName: a.Filename,
-		}
-
-		// Apply size limit check (0 = no limit)
-		if maxBytes > 0 && a.FileSizeBytes > maxBytes {
-			result.Skipped = true
-			result.Error = fmt.Errorf("attachment %q skipped: size %d bytes exceeds limit of %d bytes",
-				a.Filename, a.FileSizeBytes, maxBytes)
+		result, savedFilename := ClassifyAttachment(pageID, a, maxBytes)
+		if savedFilename == "" {
 			results = append(results, result)
 			continue
 		}
 
-		if strings.TrimSpace(a.ID) == "" {
-			result.Error = fmt.Errorf("attachment %q has no attachment ID", a.Filename)
-			results = append(results, result)
-			continue
-		}
-
-		savedFilename := PageAttachmentFilename(pageID, a.Filename)
 		destPath := filepath.Join(attachDir, savedFilename)
-		// Defense in depth: the saved name must stay a single path segment. A
-		// nested name would otherwise fail below with a confusing "path not
-		// found" error, because only attachDir itself is created here and the
-		// parent of a nested name is never created.
-		if filepath.Dir(destPath) != filepath.Clean(attachDir) {
-			result.Error = fmt.Errorf("attachment %q: saved filename %q is not a single path segment", a.Filename, savedFilename)
-			results = append(results, result)
-			continue
-		}
 		if err := verifyWithinDir(attachDir, destPath); err != nil {
 			result.Error = fmt.Errorf("attachment %q: %w", a.Filename, err)
 			results = append(results, result)
@@ -108,6 +85,41 @@ func DownloadPageAttachments(
 	}
 
 	return results
+}
+
+// ClassifyAttachment runs the pre-download checks that the dry-run preview and the
+// real download must agree on, and derives the saved filename for an attachment
+// that passes them.
+//
+// A non-empty savedFilename means the attachment is downloadable; when it is
+// empty, result.Error explains why (result.Skipped is set for the size limit).
+// FileID is deliberately left to the caller: the preview records it up front,
+// while the download records it only once the file is written.
+func ClassifyAttachment(pageID string, a confluence.AttachmentData, maxBytes int64) (AttachmentResult, string) {
+	result := AttachmentResult{OriginalName: a.Filename}
+
+	// Apply size limit check (0 = no limit)
+	if maxBytes > 0 && a.FileSizeBytes > maxBytes {
+		result.Skipped = true
+		result.Error = fmt.Errorf("attachment %q skipped: size %d bytes exceeds limit of %d bytes",
+			a.Filename, a.FileSizeBytes, maxBytes)
+		return result, ""
+	}
+
+	if strings.TrimSpace(a.ID) == "" {
+		result.Error = fmt.Errorf("attachment %q has no attachment ID", a.Filename)
+		return result, ""
+	}
+
+	savedFilename := PageAttachmentFilename(pageID, a.Filename)
+	// Defense in depth: the saved name must stay a single path segment, otherwise
+	// it would resolve outside the attachments directory once joined onto it.
+	if strings.ContainsAny(savedFilename, `/\`) {
+		result.Error = fmt.Errorf("attachment %q: saved filename %q is not a single path segment", a.Filename, savedFilename)
+		return result, ""
+	}
+
+	return result, savedFilename
 }
 
 // PageAttachmentFilename returns the deterministic saved filename for an attachment.

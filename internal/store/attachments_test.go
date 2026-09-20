@@ -291,6 +291,75 @@ func TestPageAttachmentFilename_HostQualifiedKey(t *testing.T) {
 	}
 }
 
+func TestClassifyAttachment(t *testing.T) {
+	const pageKey = "company1.atlassian.net/123"
+
+	cases := []struct {
+		name           string
+		attachment     confluence.AttachmentData
+		maxBytes       int64
+		wantSkipped    bool
+		wantError      bool
+		wantErrContain string
+		wantSavedName  string
+	}{
+		{
+			name:          "valid attachment is download-ready",
+			attachment:    confluence.AttachmentData{ID: "a1", PageID: "123", Filename: "diagram.png", MediaType: "image/png", FileSizeBytes: 10},
+			maxBytes:      100,
+			wantSavedName: PageAttachmentFilename(pageKey, "diagram.png"),
+		},
+		{
+			name:           "oversize attachment is skipped",
+			attachment:     confluence.AttachmentData{ID: "a1", Filename: "big.bin", FileSizeBytes: 101},
+			maxBytes:       100,
+			wantSkipped:    true,
+			wantError:      true,
+			wantErrContain: "exceeds limit",
+		},
+		{
+			name:          "a limit of zero means unlimited",
+			attachment:    confluence.AttachmentData{ID: "a1", Filename: "big.bin", FileSizeBytes: 1 << 40},
+			maxBytes:      0,
+			wantSavedName: PageAttachmentFilename(pageKey, "big.bin"),
+		},
+		{
+			name:           "blank attachment ID is rejected",
+			attachment:     confluence.AttachmentData{ID: "   ", Filename: "noid.bin", FileSizeBytes: 1},
+			maxBytes:       100,
+			wantError:      true,
+			wantErrContain: "has no attachment ID",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, savedName := ClassifyAttachment(pageKey, tc.attachment, tc.maxBytes)
+
+			if result.OriginalName != tc.attachment.Filename {
+				t.Fatalf("OriginalName = %q, want %q", result.OriginalName, tc.attachment.Filename)
+			}
+			if result.Skipped != tc.wantSkipped {
+				t.Fatalf("Skipped = %v, want %v", result.Skipped, tc.wantSkipped)
+			}
+			if (result.Error != nil) != tc.wantError {
+				t.Fatalf("Error = %v, want error=%v", result.Error, tc.wantError)
+			}
+			if tc.wantErrContain != "" && (result.Error == nil || !strings.Contains(result.Error.Error(), tc.wantErrContain)) {
+				t.Fatalf("Error = %v, want it to contain %q", result.Error, tc.wantErrContain)
+			}
+			if savedName != tc.wantSavedName {
+				t.Fatalf("savedFilename = %q, want %q", savedName, tc.wantSavedName)
+			}
+			// FileID is the caller's business: the preview records it up front, the
+			// download only after the file is written.
+			if result.FileID != "" {
+				t.Fatalf("FileID = %q, want it left to the caller", result.FileID)
+			}
+		})
+	}
+}
+
 func TestPageAttachmentFilename_DistinctHostsSharingPageIDAndName(t *testing.T) {
 	first := PageAttachmentFilename("company1.atlassian.net/123", "diagram.png")
 	second := PageAttachmentFilename("company2.atlassian.net/123", "diagram.png")

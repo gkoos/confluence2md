@@ -301,11 +301,7 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 				savedAttachments = append(savedAttachments, r.Filename)
 				metrics.attachmentsDownloaded++
 				artifactPath := filepath.ToSlash(filepath.Join("attachments", r.Filename))
-				if _, existed := rc.oldManagedArtifacts[artifactPath]; existed {
-					metrics.fileUpdatedCount++
-				} else {
-					metrics.fileAddedCount++
-				}
+				recordManagedArtifact(metrics, rc.oldManagedArtifacts, artifactPath)
 			}
 		}
 		if !rc.dryRun {
@@ -376,11 +372,7 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 	storedRecord, ok := rc.writer.GetPages()[pageIDStr]
 	if ok {
 		artifactPath := normalizeManagedPath(storedRecord.LocalPath)
-		if _, existed := rc.oldManagedArtifacts[artifactPath]; existed {
-			metrics.fileUpdatedCount++
-		} else {
-			metrics.fileAddedCount++
-		}
+		recordManagedArtifact(metrics, rc.oldManagedArtifacts, artifactPath)
 	}
 	metrics.rerenderedCount++
 
@@ -415,20 +407,13 @@ func previewPageAttachments(pageID string, attachments []confluenceclient.Attach
 	maxBytes := int64(maxSizeMB) * 1024 * 1024
 	results := make([]store.AttachmentResult, 0, len(attachments))
 	for _, a := range attachments {
-		result := store.AttachmentResult{OriginalName: a.Filename}
-		if maxBytes > 0 && a.FileSizeBytes > maxBytes {
-			result.Skipped = true
-			result.Error = fmt.Errorf("attachment %q skipped: size %d bytes exceeds limit of %d bytes", a.Filename, a.FileSizeBytes, maxBytes)
-			results = append(results, result)
-			continue
-		}
-		if strings.TrimSpace(a.ID) == "" {
-			result.Error = fmt.Errorf("attachment %q has no attachment ID", a.Filename)
+		result, savedFilename := store.ClassifyAttachment(pageID, a, maxBytes)
+		if savedFilename == "" {
 			results = append(results, result)
 			continue
 		}
 
-		result.Filename = store.PageAttachmentFilename(pageID, a.Filename)
+		result.Filename = savedFilename
 		result.FileID = a.FileID
 		results = append(results, result)
 	}
@@ -451,7 +436,10 @@ func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error
 		pruneMetadataToCrawledSet(pagesPreview, rc.crawlResults)
 		rebuildIncomingLinks(pagesPreview)
 
-		reconcileStats := previewManagedArtifactReconcile(rc.previousPages, pagesPreview)
+		reconcileStats, err := reconcileManagedArtifacts(rc.cfg.Output.Dir, rc.previousPages, pagesPreview, true)
+		if err != nil {
+			return nil, fmt.Errorf("preview managed artifact reconcile: %w", err)
+		}
 		return &runFinalizeResult{
 			rewriteStats:       links.RewriteStats{},
 			reconcileStats:     reconcileStats,
@@ -466,7 +454,7 @@ func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error
 		return nil, fmt.Errorf("finalize traversal output: %w", err)
 	}
 
-	reconcileStats, err := reconcileManagedArtifacts(rc.cfg.Output.Dir, rc.previousPages, rc.writer.GetPages())
+	reconcileStats, err := reconcileManagedArtifacts(rc.cfg.Output.Dir, rc.previousPages, rc.writer.GetPages(), false)
 	if err != nil {
 		return nil, fmt.Errorf("reconcile managed artifacts: %w", err)
 	}
@@ -511,12 +499,10 @@ func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFin
 	} else {
 		fmt.Printf("Mode: %s\n", rc.mode)
 	}
-	fmt.Printf("Total pages crawled: %d\n", stats["total_pages"])
-	if depthDist, ok := stats["depth_distribution"].(map[int]int); ok {
-		for depth := 0; depth <= rc.cfg.Crawl.MaxDepth; depth++ {
-			if count, exists := depthDist[depth]; exists && count > 0 {
-				fmt.Printf("  Depth %d: %d pages\n", depth, count)
-			}
+	fmt.Printf("Total pages crawled: %d\n", stats.TotalPages)
+	for depth := 0; depth <= rc.cfg.Crawl.MaxDepth; depth++ {
+		if count, exists := stats.DepthDistribution[depth]; exists && count > 0 {
+			fmt.Printf("  Depth %d: %d pages\n", depth, count)
 		}
 	}
 	if rc.dryRun {
@@ -526,9 +512,9 @@ func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFin
 	}
 	fmt.Printf("Pages with errors: %d\n", metrics.errorCount)
 	fmt.Printf("Pages detected as deleted: %d\n", metrics.deletedCount)
-	fmt.Printf("Internal crawl links discovered (edge count): %d\n", stats["total_links"])
-	fmt.Printf("Unique internal target pages linked: %d\n", stats["unique_internal_targets"])
-	fmt.Printf("External links skipped (host filter): %d\n", stats["external_links_skipped"])
+	fmt.Printf("Internal crawl links discovered (edge count): %d\n", stats.TotalLinks)
+	fmt.Printf("Unique internal target pages linked: %d\n", stats.UniqueInternalTargets)
+	fmt.Printf("External links skipped (host filter): %d\n", stats.ExternalLinksSkipped)
 	if rc.dryRun {
 		fmt.Printf("Link rewrite pass: skipped (dry-run)\n")
 	} else {

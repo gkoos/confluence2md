@@ -125,3 +125,37 @@ func TestNoTokenLeak_InErrorsAndAuthFailureMessages(t *testing.T) {
 func containsToken(s, token string) bool {
 	return token != "" && strings.Contains(s, token)
 }
+
+// TestComputeAttachmentSignature_StableAndOrderIndependent pins the shared
+// signature helper: it drives updates-mode dirty detection, so it must be stable,
+// order-independent and sensitive to real attachment changes.
+func TestComputeAttachmentSignature_StableAndOrderIndependent(t *testing.T) {
+	if got := ComputeAttachmentSignature(nil); got != "none" {
+		t.Fatalf("empty attachments signature = %q, want %q", got, "none")
+	}
+
+	first := AttachmentData{ID: "a1", Filename: "diagram.png", MediaType: "image/png", FileSizeBytes: 1024}
+	second := AttachmentData{ID: "a2", Filename: "notes.txt", MediaType: "text/plain", FileSizeBytes: 20}
+
+	forward := ComputeAttachmentSignature([]AttachmentData{first, second})
+	if want := "a1|diagram.png|image/png|1024;a2|notes.txt|text/plain|20"; forward != want {
+		t.Fatalf("signature = %q, want %q", forward, want)
+	}
+
+	if reversed := ComputeAttachmentSignature([]AttachmentData{second, first}); reversed != forward {
+		t.Fatalf("signature is order-dependent: %q vs %q", forward, reversed)
+	}
+
+	spaced := first
+	spaced.Filename = "  diagram.png  "
+	spaced.MediaType = " image/png "
+	if got := ComputeAttachmentSignature([]AttachmentData{spaced, second}); got != forward {
+		t.Fatalf("signature changed with surrounding whitespace: %q vs %q", got, forward)
+	}
+
+	resized := first
+	resized.FileSizeBytes = 2048
+	if got := ComputeAttachmentSignature([]AttachmentData{resized, second}); got == forward {
+		t.Fatalf("signature did not change when a file size changed: %q", got)
+	}
+}
