@@ -18,13 +18,24 @@ var (
 	pageIDFromURLPattern       = regexp.MustCompile(`/pages/(\d+)`)
 	relativeRootLinkPattern    = regexp.MustCompile(`\]\((/[^)\s]+)\)`)
 
-	attachmentLinkPattern      = regexp.MustCompile(`\]\(attachment://([^)]+)\)`)
+	attachmentLinkPattern = regexp.MustCompile(`\]\(attachment://([^)]+)\)`)
 )
 
-func enrichURLOnlyLinkLabels(markdown string, client *confluenceclient.Client) (string, error) {
+// enrichURLOnlyLinkLabels replaces URL-only link labels ("[<url>](<url>)" for a
+// Confluence page) with the target page's title, doing at most one title lookup
+// per distinct page.
+//
+// It honors the caller's context: an already-cancelled or expired context
+// returns immediately without issuing requests, and the per-page lookup budget
+// (45s) is derived from ctx so the caller's deadline and cancellation propagate.
+func enrichURLOnlyLinkLabels(ctx context.Context, markdown string, client *confluenceclient.Client) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return markdown, err
+	}
+
 	titleCache := make(map[string]string)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	lookupCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 
 	out := urlOnlyMarkdownLinkPattern.ReplaceAllStringFunc(markdown, func(match string) string {
@@ -54,7 +65,7 @@ func enrichURLOnlyLinkLabels(markdown string, client *confluenceclient.Client) (
 			return match
 		}
 
-		title, err := client.GetPageTitleByID(ctx, pageID)
+		title, err := client.GetPageTitleByID(lookupCtx, pageID)
 		if err != nil {
 			return match
 		}
