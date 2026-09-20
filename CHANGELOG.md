@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/gkoos/confluence2md/compare/v1.5.0...v1.6.0) (2026-09-20)
+
+
+### Features
+
+* qualify page keys and output filenames with the host ([#105](https://github.com/gkoos/confluence2md/issues/105)) ([0b99987](https://github.com/gkoos/confluence2md/commit/0b99987f8f5f6b60ff10cc083f61e4612a6bfcc8))
+
+
+### Bug Fixes
+
+* preserve blank-line runs inside fenced code blocks ([#108](https://github.com/gkoos/confluence2md/issues/108)) ([5e7ec64](https://github.com/gkoos/confluence2md/commit/5e7ec64b83700763f5342d72bb8621066687844b))
+* scope display-name cache per client and stop caching failures ([#107](https://github.com/gkoos/confluence2md/issues/107)) ([a2438ae](https://github.com/gkoos/confluence2md/commit/a2438ae47d58f909ba75e45305c86e6172fd0ddf))
+
 ## [1.5.0](https://github.com/gkoos/confluence2md/compare/v1.4.0...v1.5.0) (2026-09-19)
 
 
