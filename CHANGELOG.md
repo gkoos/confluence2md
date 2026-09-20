@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1](https://github.com/gkoos/confluence2md/compare/v1.6.0...v1.6.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* honor the run context when enriching link labels ([#109](https://github.com/gkoos/confluence2md/issues/109)) ([2d08868](https://github.com/gkoos/confluence2md/commit/2d0886879285405136b5ae98f6e23c6d3a1f57b8))
+* retry only transient transport errors ([#111](https://github.com/gkoos/confluence2md/issues/111)) ([af8d29b](https://github.com/gkoos/confluence2md/commit/af8d29b0fc051fe2b56ee65b9ee97017a707f66a))
+
 ## [1.6.0](https://github.com/gkoos/confluence2md/compare/v1.5.0...v1.6.0) (2026-09-20)
 
 
