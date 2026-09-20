@@ -2,6 +2,7 @@ package convert
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -136,10 +137,10 @@ func renderHTMLTable(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 			}
 			attrs := ""
 			if cs := attrInt(cell, "colspan", 1); cs > 1 {
-				attrs += ` colspan="` + itoa(cs) + `"`
+				attrs += ` colspan="` + strconv.Itoa(cs) + `"`
 			}
 			if rs := attrInt(cell, "rowspan", 1); rs > 1 {
-				attrs += ` rowspan="` + itoa(rs) + `"`
+				attrs += ` rowspan="` + strconv.Itoa(rs) + `"`
 			}
 			buf.WriteString("<" + tag + attrs + ">")
 			var inner strings.Builder
@@ -172,7 +173,7 @@ func renderNodeHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 
 func renderHeadingHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder) {
 	lvl := min(max(attrInt(node, "level", 1), 1), 6)
-	tag := "h" + itoa(lvl)
+	tag := "h" + strconv.Itoa(lvl)
 	buf.WriteString("<" + tag + ">")
 	var inner strings.Builder
 	walkChildren(node, ctx, &inner)
@@ -235,23 +236,4 @@ func renderChecklistHTML(node ADFNode, ctx *RenderContext, buf *strings.Builder,
 		buf.WriteString("</li>")
 	}
 	buf.WriteString("</ul>")
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	b := make([]byte, 0, 10)
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	if neg {
-		b = append([]byte{'-'}, b...)
-	}
-	return string(b)
 }

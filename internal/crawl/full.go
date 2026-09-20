@@ -3,7 +3,6 @@ package crawl
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -376,7 +375,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID
 			page.AttachmentFetchError = fmt.Sprintf("attachments fetch failed: %v", err)
 		} else {
 			page.Attachments = attachments
-			page.AttachmentSignature = attachmentSignatureFromData(attachments)
+			page.AttachmentSignature = confluence.ComputeAttachmentSignature(attachments)
 		}
 	}
 
@@ -617,25 +616,6 @@ func parseOutgoingLinkRefs(ids []string, defaultHost string) []store.PageRef {
 		out = append(out, store.PageRef{Host: host, ID: id})
 	}
 	return links.DedupPageRefs(out)
-}
-
-func attachmentSignatureFromData(attachments []confluence.AttachmentData) string {
-	if len(attachments) == 0 {
-		return "none"
-	}
-
-	parts := make([]string, 0, len(attachments))
-	for _, a := range attachments {
-		parts = append(parts, strings.Join([]string{
-			strings.TrimSpace(a.ID),
-			strings.TrimSpace(a.Filename),
-			strings.TrimSpace(a.MediaType),
-			strconv.FormatInt(a.FileSizeBytes, 10),
-		}, "|"))
-	}
-
-	sort.Strings(parts)
-	return strings.Join(parts, ";")
 }
 
 func hasLeadingTitleH1(markdown, title string) bool {
