@@ -9,13 +9,12 @@ func ToMarkdown(adfJSON string) (string, error) {
 	return adfToMarkdown(adfJSON)
 }
 
+// normalizeMarkdown collapses blank-line runs and cleans up spacing around
+// headings, tables and horizontal rules. Fenced code blocks are passed through
+// verbatim: collapsing happens per line in the loop below and only outside a
+// fence, never as a whole-document replacement, which would also rewrite code
+// content.
 func normalizeMarkdown(s string) string {
-	// Remove multiple consecutive newlines
-	for strings.Contains(s, "\n\n\n") {
-		s = strings.ReplaceAll(s, "\n\n\n", "\n\n")
-	}
-
-	// Clean up spacing around headers and tables while preserving fenced code blocks.
 	lines := strings.Split(s, "\n")
 	var result []string
 	inFence := false
