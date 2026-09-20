@@ -2,6 +2,7 @@ package crawl
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -84,8 +85,13 @@ func TestRunUsesSharedTraversalWithCustomNodeHandler(t *testing.T) {
 		mu.Unlock()
 
 		return &NodeHandlerResult{
-			Title:         "test",
-			OutgoingLinks: refsForHost(host, graph[pageID]),
+			Page: &CrawledPage{
+				ID:            pageID,
+				Host:          host,
+				Depth:         depth,
+				Title:         "test",
+				OutgoingLinks: refsForHost(host, graph[pageID]),
+			},
 		}
 	})
 	if err != nil {
@@ -97,9 +103,10 @@ func TestRunUsesSharedTraversalWithCustomNodeHandler(t *testing.T) {
 		t.Fatalf("Run returned error: %v", runErr)
 	}
 
-	// Custom handler didn't emit page payloads; traversal still runs and deduplicates visits.
-	if len(results) != 0 {
-		t.Fatalf("expected no page results from custom handler, got %d", len(results))
+	// The engine reads child links from the page payload, so a handler must emit a
+	// page; traversal still deduplicates visits across branches.
+	if len(results) != 4 {
+		t.Fatalf("expected 4 page results from the custom handler, got %d", len(results))
 	}
 
 	expected := []int64{1, 2, 3, 4}
@@ -107,6 +114,100 @@ func TestRunUsesSharedTraversalWithCustomNodeHandler(t *testing.T) {
 		if visitedByHandler[id] != 1 {
 			t.Fatalf("expected page %d to be visited once, got %d", id, visitedByHandler[id])
 		}
+	}
+}
+
+// TestCrawlSessionStats_ReportsTypedCounters pins the typed counters the CLI
+// summary and the observability docs rely on for a known traversal.
+func TestCrawlSessionStats_ReportsTypedCounters(t *testing.T) {
+	cfg := &config.Config{
+		Crawl: config.CrawlConfig{
+			MaxDepth:     2,
+			Concurrency:  1,
+			RateLimitRPM: 60000,
+			QueueSize:    16,
+		},
+	}
+	cs := NewCrawlSession(nil, cfg, "")
+
+	graph := map[int64][]int64{1: {2, 3}, 2: {3}, 3: {}}
+
+	err := cs.SetNodeHandler(func(_ context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
+		return &NodeHandlerResult{Page: &CrawledPage{
+			ID:                   pageID,
+			Host:                 host,
+			Depth:                depth,
+			Title:                fmt.Sprintf("Page %d", pageID),
+			OutgoingLinks:        refsForHost(host, graph[pageID]),
+			ExternalLinksSkipped: 2,
+		}}
+	})
+	if err != nil {
+		t.Fatalf("SetNodeHandler returned error: %v", err)
+	}
+
+	if _, runErr := cs.Run(context.Background(), testSeeds(1)); runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+
+	stats := cs.Stats()
+	if stats.TotalPages != 3 {
+		t.Fatalf("TotalPages = %d, want 3", stats.TotalPages)
+	}
+	if stats.TotalLinks != 3 { // 1 -> {2, 3} plus 2 -> {3}
+		t.Fatalf("TotalLinks = %d, want 3", stats.TotalLinks)
+	}
+	if stats.UniqueInternalTargets != 2 {
+		t.Fatalf("UniqueInternalTargets = %d, want 2", stats.UniqueInternalTargets)
+	}
+	if stats.ExternalLinksSkipped != 6 {
+		t.Fatalf("ExternalLinksSkipped = %d, want 6", stats.ExternalLinksSkipped)
+	}
+	if stats.QueueDrops != 0 || stats.QueueDropSampleCount != 0 {
+		t.Fatalf("expected no queue drops, got %d (samples: %d)", stats.QueueDrops, stats.QueueDropSampleCount)
+	}
+	wantDepth := map[int]int{0: 1, 1: 2}
+	if len(stats.DepthDistribution) != len(wantDepth) {
+		t.Fatalf("DepthDistribution = %v, want %v", stats.DepthDistribution, wantDepth)
+	}
+	for depth, want := range wantDepth {
+		if got := stats.DepthDistribution[depth]; got != want {
+			t.Fatalf("DepthDistribution[%d] = %d, want %d", depth, got, want)
+		}
+	}
+}
+
+func TestRun_HandlerWithoutPageStillTraverses(t *testing.T) {
+	cfg := &config.Config{
+		Crawl: config.CrawlConfig{
+			MaxDepth:     1,
+			Concurrency:  1,
+			RateLimitRPM: 60000,
+			QueueSize:    16,
+		},
+	}
+	cs := NewCrawlSession(nil, cfg, "")
+
+	visited := make(map[int64]int)
+	err := cs.SetNodeHandler(func(_ context.Context, _ string, pageID int64, _ int) *NodeHandlerResult {
+		visited[pageID]++
+		// A handler that emits no page payload contributes no links either: the
+		// engine reads child links from Page, so traversal stops at the seed.
+		return &NodeHandlerResult{}
+	})
+	if err != nil {
+		t.Fatalf("SetNodeHandler returned error: %v", err)
+	}
+
+	results, runErr := cs.Run(context.Background(), testSeeds(1))
+	if runErr != nil {
+		t.Fatalf("Run returned error: %v", runErr)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected no page results from a page-less handler, got %d", len(results))
+	}
+	if visited[1] != 1 {
+		t.Fatalf("expected the seed to be visited once, got %d", visited[1])
 	}
 }
 
@@ -136,7 +237,13 @@ func TestTraversalUsesMinimalDepthAcrossBranches(t *testing.T) {
 		mu.Lock()
 		depthByNode[pageID] = depth
 		mu.Unlock()
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: refsForHost(host, graph[pageID])}
+		return &NodeHandlerResult{Page: &CrawledPage{
+			ID:            pageID,
+			Host:          host,
+			Depth:         depth,
+			Title:         "test",
+			OutgoingLinks: refsForHost(host, graph[pageID]),
+		}}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
@@ -167,11 +274,12 @@ func TestRunStoresDeletedNodeWithoutEnqueuingChildren(t *testing.T) {
 		visited[pageID]++
 		switch pageID {
 		case 1:
-			page := &CrawledPage{ID: pageID, Host: host, Depth: depth}
-			return &NodeHandlerResult{Page: page, OutgoingLinks: refsForHost(host, []int64{2})}
+			page := &CrawledPage{ID: pageID, Host: host, Depth: depth, OutgoingLinks: refsForHost(host, []int64{2})}
+			return &NodeHandlerResult{Page: page}
 		case 2:
 			// Include an outgoing link deliberately: deletion must take precedence.
-			return &NodeHandlerResult{Deleted: true, OutgoingLinks: refsForHost(host, []int64{3}), Title: "Gone"}
+			deletedPage := &CrawledPage{ID: pageID, Host: host, Depth: depth, Title: "Gone", OutgoingLinks: refsForHost(host, []int64{3})}
+			return &NodeHandlerResult{Page: deletedPage, Deleted: true}
 		default:
 			return &NodeHandlerResult{Page: &CrawledPage{ID: pageID, Host: host, Depth: depth}}
 		}
@@ -547,7 +655,13 @@ func TestRun_FailsLoudlyWhenQueueSaturates(t *testing.T) {
 	}
 
 	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: refsForHost(host, graph[pageID])}
+		return &NodeHandlerResult{Page: &CrawledPage{
+			ID:            pageID,
+			Host:          host,
+			Depth:         depth,
+			Title:         "test",
+			OutgoingLinks: refsForHost(host, graph[pageID]),
+		}}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
@@ -576,8 +690,8 @@ func TestRun_ReturnsCancelledErrorWithPreCancelledContext(t *testing.T) {
 	}
 	cs := NewCrawlSession(nil, cfg, "")
 
-	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: []store.PageRef{}}
+	err := cs.SetNodeHandler(func(_ context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
+		return &NodeHandlerResult{Page: &CrawledPage{ID: pageID, Host: host, Depth: depth, Title: "test"}}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
@@ -619,7 +733,7 @@ func TestRun_ReturnsCancelledErrorWhenCancelledMidCrawl(t *testing.T) {
 		case <-proceed:
 		case <-ctx.Done():
 		}
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: []store.PageRef{}}
+		return &NodeHandlerResult{Page: &CrawledPage{ID: pageID, Host: host, Depth: depth, Title: "test"}}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
@@ -665,7 +779,13 @@ func TestRun_DoesNotFailWhenQueueHasCapacity(t *testing.T) {
 	}
 
 	err := cs.SetNodeHandler(func(ctx context.Context, host string, pageID int64, depth int) *NodeHandlerResult {
-		return &NodeHandlerResult{Title: "test", OutgoingLinks: refsForHost(host, graph[pageID])}
+		return &NodeHandlerResult{Page: &CrawledPage{
+			ID:            pageID,
+			Host:          host,
+			Depth:         depth,
+			Title:         "test",
+			OutgoingLinks: refsForHost(host, graph[pageID]),
+		}}
 	})
 	if err != nil {
 		t.Fatalf("SetNodeHandler returned error: %v", err)
