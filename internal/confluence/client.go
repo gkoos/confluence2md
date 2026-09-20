@@ -267,13 +267,17 @@ func (c *Client) GetPageState(ctx context.Context, pageID int64, includeAttachme
 		if err != nil {
 			return nil, fmt.Errorf("fetch attachment state for page %d: %w", pageID, err)
 		}
-		state.AttachmentSignature = computeAttachmentSignature(attachments)
+		state.AttachmentSignature = ComputeAttachmentSignature(attachments)
 	}
 
 	return state, nil
 }
 
-func computeAttachmentSignature(attachments []AttachmentData) string {
+// ComputeAttachmentSignature returns a stable, order-independent signature of a
+// page's attachments, used to detect attachment changes between runs. It is the
+// single implementation shared by the updates-mode state lookup and the full
+// crawl's per-page fetch.
+func ComputeAttachmentSignature(attachments []AttachmentData) string {
 	if len(attachments) == 0 {
 		return "none"
 	}

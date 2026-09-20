@@ -159,7 +159,7 @@ func TestReconcileManagedArtifacts_DeletesOldMinusNew(t *testing.T) {
 		"2": {ID: "2", LocalPath: "keep_2.md", Attachments: []string{"2_keep.bin"}},
 	}
 
-	stats, err := reconcileManagedArtifacts(outDir, oldPages, newPages)
+	stats, err := reconcileManagedArtifacts(outDir, oldPages, newPages, false)
 	if err != nil {
 		t.Fatalf("reconcileManagedArtifacts returned error: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestReconcileManagedArtifacts_DeletesOldFilenameOnRenameSamePageID(t *testi
 		"123": {ID: "123", LocalPath: "new-title_123.md"},
 	}
 
-	stats, err := reconcileManagedArtifacts(outDir, oldPages, newPages)
+	stats, err := reconcileManagedArtifacts(outDir, oldPages, newPages, false)
 	if err != nil {
 		t.Fatalf("reconcileManagedArtifacts returned error: %v", err)
 	}
@@ -213,6 +213,39 @@ func TestReconcileManagedArtifacts_DeletesOldFilenameOnRenameSamePageID(t *testi
 	}
 	if _, err := os.Stat(newPath); err != nil {
 		t.Fatalf("expected new file kept, err=%v", err)
+	}
+}
+
+func TestReconcileManagedArtifacts_DryRunCountsWithoutDeleting(t *testing.T) {
+	outDir := t.TempDir()
+
+	stalePage := filepath.Join(outDir, "stale_1.md")
+	staleAttachment := filepath.Join(outDir, "attachments", "1_stale.bin")
+	if err := os.MkdirAll(filepath.Dir(staleAttachment), 0755); err != nil {
+		t.Fatalf("mkdir attachments: %v", err)
+	}
+	for _, p := range []string{stalePage, staleAttachment} {
+		if err := os.WriteFile(p, []byte("x"), 0644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+
+	oldPages := map[string]store.PageRecord{
+		"1": {ID: "1", LocalPath: "stale_1.md", Attachments: []string{"1_stale.bin"}},
+	}
+
+	stats, err := reconcileManagedArtifacts(outDir, oldPages, map[string]store.PageRecord{}, true)
+	if err != nil {
+		t.Fatalf("reconcileManagedArtifacts (dry-run) returned error: %v", err)
+	}
+	if stats.Deleted != 2 {
+		t.Fatalf("expected dry-run to count 2 stale artifacts, got %d", stats.Deleted)
+	}
+
+	for _, p := range []string{stalePage, staleAttachment} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("expected dry-run to leave %s in place, stat err=%v", p, err)
+		}
 	}
 }
 

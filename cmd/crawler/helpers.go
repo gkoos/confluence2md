@@ -24,6 +24,17 @@ func pageRefsToStringIDs(refs []store.PageRef) []string {
 	return out
 }
 
+// recordManagedArtifact classifies a freshly written artifact against the set the
+// previous crawl recorded, so the added/updated counters stay consistent wherever
+// an artifact is produced.
+func recordManagedArtifact(metrics *runMetrics, oldManagedArtifacts map[string]struct{}, artifactPath string) {
+	if _, existed := oldManagedArtifacts[artifactPath]; existed {
+		metrics.fileUpdatedCount++
+		return
+	}
+	metrics.fileAddedCount++
+}
+
 func ensureLocalPageArtifact(outputDir string, record store.PageRecord, content string) (bool, error) {
 	localPath := strings.TrimSpace(record.LocalPath)
 	if localPath == "" {
