@@ -17,7 +17,10 @@ This document explains how attachment metadata and binary files are retrieved, s
 3. Crawl fetches page attachment metadata from Confluence v2.
 4. Store layer downloads attachment binaries and writes them to output/attachments.
 5. Before writing page markdown to disk, placeholder links are rewritten:
-   - attachment://original-filename.ext -> attachments/{page-id}_{original-filename.ext}
+   - attachment://original-filename.ext -> attachments/{page-key}_{original-filename.ext}
+   - the page key is always host-qualified (`host/page-id`) and is flattened into
+     a single path segment (`store.FlattenPageKey`), e.g.
+     `attachments/company1.atlassian.net_123_diagram.png`
 
 ## Metadata discovery (v2)
 
@@ -54,7 +57,7 @@ Safety controls:
 Attachment files are written by [internal/store/attachments.go](../internal/store/attachments.go):
 
 - Output directory: output/attachments
-- Deterministic filename format: {page-id}_{original-filename}
+- Deterministic filename format: {page-key}_{original-filename}, where the page key is the host-qualified `host/page-id` key flattened into one path segment (a port `:` becomes `_`)
 - Spaces in original filenames are replaced with underscores.
 - Configured size limit is enforced before download (attachments.max_size_mb, 0 means unlimited).
 
@@ -71,7 +74,7 @@ The page processing flow in [cmd/crawler/run_pipeline.go](../cmd/crawler/run_pip
 
 - Downloads attachments for the page.
 - Builds a map from original filename to saved local path.
-- Rewrites markdown links matching attachment://<filename> to attachments/<saved-filename>.
+- Rewrites markdown links matching attachment://<filename> to attachments/<saved-filename>. Saved names are always flat: the page key is encoded by `store.FlattenPageKey` (`/` and filename-illegal characters such as a port `:` become `_`), never used as a directory.
 
 This guarantees markdown output references the exact file that was persisted.
 

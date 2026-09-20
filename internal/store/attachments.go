@@ -12,7 +12,7 @@ import (
 
 // AttachmentResult holds the outcome of downloading a single attachment.
 type AttachmentResult struct {
-	Filename     string // saved as {page-id}_{original-filename}
+	Filename     string // saved as {page-key}_{original-filename}
 	OriginalName string
 	FileID       string // Confluence Media Services UUID (fileId); matches ADF media.attrs.id
 	Skipped      bool   // true if over size limit
@@ -71,6 +71,15 @@ func DownloadPageAttachments(
 
 		savedFilename := PageAttachmentFilename(pageID, a.Filename)
 		destPath := filepath.Join(attachDir, savedFilename)
+		// Defense in depth: the saved name must stay a single path segment. A
+		// nested name would otherwise fail below with a confusing "path not
+		// found" error, because only attachDir itself is created here and the
+		// parent of a nested name is never created.
+		if filepath.Dir(destPath) != filepath.Clean(attachDir) {
+			result.Error = fmt.Errorf("attachment %q: saved filename %q is not a single path segment", a.Filename, savedFilename)
+			results = append(results, result)
+			continue
+		}
 		if err := verifyWithinDir(attachDir, destPath); err != nil {
 			result.Error = fmt.Errorf("attachment %q: %w", a.Filename, err)
 			results = append(results, result)
@@ -102,11 +111,14 @@ func DownloadPageAttachments(
 }
 
 // PageAttachmentFilename returns the deterministic saved filename for an attachment.
-// Format: {page-id}_{original-filename}, with spaces replaced by underscores and
-// path separators, traversal segments, and control characters sanitized away.
+// Format: {page-key}_{original-filename}, where the page key is flattened into a
+// single path segment by FlattenPageKey (keys are "host/id"). Spaces
+// in the original filename are replaced by underscores, and path separators,
+// traversal segments, and control characters are sanitized away. The result is
+// always flat, so it can be joined directly onto the attachments directory.
 func PageAttachmentFilename(pageID, originalFilename string) string {
 	safe := sanitizeAttachmentFilename(originalFilename)
-	return fmt.Sprintf("%s_%s", pageID, safe)
+	return fmt.Sprintf("%s_%s", FlattenPageKey(pageID), safe)
 }
 
 // sanitizeAttachmentFilename strips or replaces characters that could be used

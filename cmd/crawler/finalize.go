@@ -40,11 +40,11 @@ func rebuildIncomingLinks(pagesByID map[string]store.PageRecord) {
 	}
 }
 
-func finalizeTraversalOutput(outputDir string, w *store.Writer, qualify bool) (links.RewriteStats, error) {
+func finalizeTraversalOutput(outputDir string, w *store.Writer) (links.RewriteStats, error) {
 	pagesByID := w.GetPages()
 	rebuildIncomingLinks(pagesByID)
 
-	stats, err := links.RewriteCrawledPageLinks(outputDir, pagesByID, qualify)
+	stats, err := links.RewriteCrawledPageLinks(outputDir, pagesByID)
 	if err != nil {
 		return stats, err
 	}
@@ -90,7 +90,7 @@ func writeStartIndex(outputDir string, w *store.Writer) error {
 
 			localPath := normalizeManagedPath(record.LocalPath)
 			if localPath == "" {
-				localPath = fmt.Sprintf("%s_%s.md", strings.ToLower(strings.ReplaceAll(title, " ", "-")), seedID)
+				localPath = fmt.Sprintf("%s_%s.md", strings.ToLower(strings.ReplaceAll(title, " ", "-")), store.FlattenPageKey(seedID))
 			}
 
 			b.WriteString("- [")
@@ -128,7 +128,7 @@ type artifactReconcileStats struct {
 	Deleted int
 }
 
-func pruneMetadataToCrawledSet(pages map[string]store.PageRecord, crawlResults map[string]*crawl.CrawledPage, qualify bool) {
+func pruneMetadataToCrawledSet(pages map[string]store.PageRecord, crawlResults map[string]*crawl.CrawledPage) {
 	if len(pages) == 0 {
 		return
 	}
@@ -137,7 +137,7 @@ func pruneMetadataToCrawledSet(pages map[string]store.PageRecord, crawlResults m
 		if crawledPage == nil || crawledPage.Deleted {
 			continue
 		}
-		reachable[store.PageKey(crawledPage.Host, crawledPage.ID, qualify)] = struct{}{}
+		reachable[store.PageKey(crawledPage.Host, crawledPage.ID)] = struct{}{}
 	}
 	for pageID := range pages {
 		if _, ok := reachable[pageID]; !ok {

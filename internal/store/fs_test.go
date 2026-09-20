@@ -236,6 +236,100 @@ func TestAddPageMetadata_UpsertsWithoutWritingFile(t *testing.T) {
 	}
 }
 
+func TestAddPage_HostQualifiedIDWritesFlatPageFile(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWriter(dir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+
+	const pageKey = "company1.atlassian.net/123"
+	record := PageRecord{
+		ID:            pageKey,
+		Host:          "company1.atlassian.net",
+		Title:         "My Page",
+		Version:       1,
+		CrawledAt:     time.Now().UTC(),
+		SourceURL:     "https://company1.atlassian.net/wiki/pages/viewpage.action?pageId=123",
+		CanonicalURL:  "https://company1.atlassian.net/wiki/spaces/X/pages/123",
+		SpaceKey:      "X",
+		Depth:         0,
+		OutgoingLinks: []string{},
+		IncomingLinks: []string{},
+		StorageFormat: "# My Page",
+	}
+
+	if err := w.AddPage(pageKey, record); err != nil {
+		t.Fatalf("AddPage returned error: %v", err)
+	}
+
+	stored, ok := w.GetPages()[pageKey]
+	if !ok {
+		t.Fatalf("expected metadata to keep the canonical host-qualified key %q", pageKey)
+	}
+
+	wantLocal := "my-page_company1.atlassian.net_123.md"
+	if stored.LocalPath != wantLocal {
+		t.Fatalf("LocalPath = %q, want %q", stored.LocalPath, wantLocal)
+	}
+	if strings.ContainsAny(stored.LocalPath, `/\`) {
+		t.Fatalf("LocalPath %q is not a flat filename", stored.LocalPath)
+	}
+	if _, err := os.Stat(filepath.Join(dir, stored.LocalPath)); err != nil {
+		t.Fatalf("expected flat page file %q to exist: %v", stored.LocalPath, err)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read output dir: %v", err)
+	}
+	if len(entries) != 1 {
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		t.Fatalf("expected only the page file in the output dir, got %v", names)
+	}
+	if entries[0].IsDir() {
+		t.Fatalf("expected a flat page file, found directory %q", entries[0].Name())
+	}
+}
+
+func TestAddPageMetadata_HostQualifiedIDMatchesWrittenLocalPath(t *testing.T) {
+	const pageKey = "company1.atlassian.net/123"
+	record := PageRecord{
+		ID:            pageKey,
+		Host:          "company1.atlassian.net",
+		Title:         "My Page",
+		StorageFormat: "# My Page",
+	}
+
+	writtenDir := t.TempDir()
+	written, err := NewWriter(writtenDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+	if err := written.AddPage(pageKey, record); err != nil {
+		t.Fatalf("AddPage returned error: %v", err)
+	}
+
+	previewDir := t.TempDir()
+	preview, err := NewWriter(previewDir)
+	if err != nil {
+		t.Fatalf("NewWriter returned error: %v", err)
+	}
+	preview.AddPageMetadata(pageKey, record)
+
+	actual := written.GetPages()[pageKey].LocalPath
+	dryRun := preview.GetPages()[pageKey].LocalPath
+	if actual != dryRun {
+		t.Fatalf("dry-run local path %q does not match written local path %q", dryRun, actual)
+	}
+	if strings.ContainsAny(dryRun, `/\`) {
+		t.Fatalf("LocalPath %q is not a flat filename", dryRun)
+	}
+}
+
 func TestMarkSuccessfulCheckpoint_FailureDoesNotMutateExistingCheckpoint(t *testing.T) {
 	dir := t.TempDir()
 	w, err := NewWriter(dir)

@@ -23,7 +23,7 @@ type RewriteStats struct {
 
 // RewriteCrawledPageLinks rewrites links to crawled Confluence pages into relative
 // local Markdown paths, leaving unresolved/external links unchanged.
-func RewriteCrawledPageLinks(outputDir string, pages map[string]store.PageRecord, qualify bool) (RewriteStats, error) {
+func RewriteCrawledPageLinks(outputDir string, pages map[string]store.PageRecord) (RewriteStats, error) {
 	stats := RewriteStats{}
 
 	idToLocal := make(map[string]string, len(pages))
@@ -64,7 +64,7 @@ func RewriteCrawledPageLinks(outputDir string, pages map[string]store.PageRecord
 				return match
 			}
 
-			targetLocal, ok := idToLocal[store.PageKey(targetRef.Host, targetRef.ID, qualify)]
+			targetLocal, ok := idToLocal[store.PageKey(targetRef.Host, targetRef.ID)]
 			if !ok {
 				return match
 			}

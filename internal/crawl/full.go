@@ -85,7 +85,6 @@ type CrawlSession struct {
 	maxDepth      int
 	concurrency   int
 	seedSpaceKey  string // resolved alpha space key for title lookups
-	qualify       bool   // true when crawling multiple hosts (host-qualified keys)
 	nodeHandler   CrawlNodeHandler
 	previousPages map[string]store.PageRecord
 
@@ -121,7 +120,6 @@ func NewCrawlSession(clients *confluence.ClientSet, cfg *config.Config, seedSpac
 		maxDepth:     cfg.Crawl.MaxDepth,
 		concurrency:  cfg.Crawl.Concurrency,
 		seedSpaceKey: seedSpaceKey,
-		qualify:      len(cfg.SiteHosts()) > 1,
 
 		queue:     make(chan queueItem, cfg.Crawl.QueueSize),
 		visited:   make(map[string]bool),
@@ -260,7 +258,7 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 			title = result.Page.Title
 		}
 
-		key := store.PageKey(item.host, item.pageID, true)
+		key := store.PageKey(item.host, item.pageID)
 
 		cs.mu.Lock()
 		if result.Page != nil {
@@ -475,7 +473,7 @@ func (cs *CrawlSession) processUpdatesNode(ctx context.Context, host string, pag
 		return cs.processFullNode(ctx, host, pageID, depth)
 	}
 
-	pageIDStr := store.PageKey(host, pageID, cs.qualify)
+	pageIDStr := store.PageKey(host, pageID)
 	previous, exists := cs.previousPages[pageIDStr]
 
 	state, err := client.GetPageState(ctx, pageID, cs.config.Attachments.Download)

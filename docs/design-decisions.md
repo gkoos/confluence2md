@@ -284,6 +284,20 @@ composite page identity:
   cross-host link is discovered with the correct host and fetched from the
   correct tenant. Each `(host, pageID)` is fetched and rendered exactly once,
   regardless of how many seeds or links reach it.
-- **Byte-identical single-host output**: when all seeds share one host,
-  metadata keys and link IDs remain bare numeric IDs (`host` is omitted from
-  `PageRecord`), preserving the previous output format.
+- **Single key form**: `store.PageKey` host-qualifies every page key
+  (`host/page-id`), single-host crawls included, so metadata keys, front matter
+  IDs, link IDs and seed IDs have exactly one representation and a page never has
+  two identities. An earlier revision kept bare numeric keys for single-host
+  crawls to preserve the previous output format; that carve-out was dropped
+  because the conditional key form is what let host-qualified filenames go
+  untested, and because numeric page IDs are only unique per tenant.
+- **Flattened, host-qualified filenames** (`store.FlattenPageKey`): the
+  canonical `host/id` key is encoded into a single path segment only when a
+  filename is built — `/` and characters that are illegal in Windows filenames
+  (notably a port `:`) become `_`, while metadata keys, front matter IDs and link
+  IDs keep the unencoded form. That yields
+  `my-page_company1.atlassian.net_123.md` and
+  `attachments/company1.atlassian.net_123_diagram.png`. Host identity is kept
+  deliberately (two tenants can share a numeric page ID and attachment name).
+  Nested per-host directories are avoided because the page-relative
+  `attachments/...` links must resolve from the output root.

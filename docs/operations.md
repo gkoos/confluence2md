@@ -200,19 +200,20 @@ Example structure:
   "last_successful_crawl_completed_at": "2026-05-22T10:20:03Z",
   "last_successful_crawl_mode": "full",
   "pages": {
-    "123": {
-      "id": "123",
+    "your-org.atlassian.net/123": {
+      "id": "your-org.atlassian.net/123",
+      "host": "your-org.atlassian.net",
       "title": "Page Title",
-      "local_path": "page-title_123.md",
+      "local_path": "page-title_your-org.atlassian.net_123.md",
       "version": 7,
       "crawled_at": "2026-05-22T10:16:00Z",
       "source_url": "https://your-org.atlassian.net/wiki/pages/123",
       "canonical_url": "https://your-org.atlassian.net/wiki/spaces/SPACE/pages/123/Page+Title",
       "space_key": "SPACE",
       "depth": 0,
-      "outgoing_links": ["456"],
-      "incoming_links": ["789"],
-      "attachments": ["123_design-spec.pdf"],
+      "outgoing_links": ["your-org.atlassian.net/456"],
+      "incoming_links": ["your-org.atlassian.net/789"],
+      "attachments": ["your-org.atlassian.net_123_design-spec.pdf"],
       "attachment_signature": "a1|design-spec.pdf|application/pdf|102400"
     }
   }
@@ -227,7 +228,7 @@ Top-level fields:
 - `last_successful_crawl_started_at`: Start timestamp of the last successful run.
 - `last_successful_crawl_completed_at`: Completion timestamp of the last successful run.
 - `last_successful_crawl_mode`: Mode of the last successful run (`full` or `updates`).
-- `pages`: Map of page ID → page metadata, including outgoing/incoming links.
+- `pages`: Map of host-qualified page key (`host/page-id`) → page metadata, including outgoing/incoming links.
 
 Per-page fields commonly used by operations and integrations:
 - `outgoing_links` and `incoming_links`: Bidirectional local graph edges.

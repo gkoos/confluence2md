@@ -16,10 +16,10 @@ func snapshotPageRecords(src map[string]store.PageRecord) map[string]store.PageR
 	return out
 }
 
-func pageRefsToStringIDs(refs []store.PageRef, qualify bool) []string {
+func pageRefsToStringIDs(refs []store.PageRef) []string {
 	out := make([]string, 0, len(refs))
 	for _, r := range refs {
-		out = append(out, store.PageKey(r.Host, r.ID, qualify))
+		out = append(out, store.PageKey(r.Host, r.ID))
 	}
 	return out
 }
