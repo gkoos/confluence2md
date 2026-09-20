@@ -163,7 +163,9 @@ attachments:
   max_size_mb: 100
 
 retry:
-  # Maximum number of retries for transient API errors (429, 5xx)
+  # Maximum number of attempts for transient errors: 429/5xx responses and
+  # transient network failures (timeouts, connection resets, EOF). Permanent
+  # failures (TLS verification, unknown host, malformed requests) are not retried.
   max_attempts: 5
   # Initial backoff in milliseconds (doubles with each retry + jitter)
   initial_backoff_ms: 1000
