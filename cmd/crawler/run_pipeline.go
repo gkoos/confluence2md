@@ -272,7 +272,7 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 			return err
 		}
 
-		markdown, err = enrichURLOnlyLinkLabels(markdown, rc.clientFor(crawledPage.Host))
+		markdown, err = enrichURLOnlyLinkLabels(ctx, markdown, rc.clientFor(crawledPage.Host))
 		if err != nil {
 			logPageWithLevel("WARN", pageID, "enrich links failed: %v", err)
 		}
