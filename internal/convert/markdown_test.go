@@ -3,6 +3,7 @@ package convert
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -118,6 +119,61 @@ func TestToMarkdown_GoldenFixtures(t *testing.T) {
 
 			if got != want {
 				t.Fatalf("golden mismatch for %s\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
+			}
+		})
+	}
+}
+
+func TestToMarkdown_CodeBlockPreservesBlankLineRuns(t *testing.T) {
+	cases := []struct {
+		name string
+		text string
+	}{
+		{name: "interior run of three newlines", text: "first\n\n\nsecond"},
+		{name: "interior run of five newlines", text: "a\n\n\n\n\nb"},
+		{name: "leading blank lines", text: "\n\nfirst"},
+		{name: "trailing blank lines", text: "first\n\n\n"},
+		{name: "embedded backtick literal", text: "query := `\n\n\n`\nrun(query)"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := `{"version":1,"type":"doc","content":[{"type":"codeBlock","attrs":{"language":"text"},"content":[{"type":"text","text":` +
+				strconv.Quote(tc.text) + `}]}]}`
+
+			got, err := ToMarkdown(input)
+			if err != nil {
+				t.Fatalf("ToMarkdown returned error: %v", err)
+			}
+
+			// renderCodeBlock appends a newline before the closing fence, so the
+			// preserved span is the original text plus that newline - including when
+			// the text itself ends with newlines.
+			want := "```text\n" + tc.text + "\n```"
+			if !strings.Contains(got, want) {
+				t.Fatalf("code content was rewritten\n--- want ---\n%q\n--- got ---\n%q", want, got)
+			}
+		})
+	}
+}
+
+func TestNormalizeMarkdown_CollapsesBlankLineRunsOutsideFences(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "blank line run in prose", in: "one\n\n\n\n\ntwo", want: "one\n\ntwo"},
+		{name: "heading separated from following text", in: "# Heading\ntext", want: "# Heading\n\ntext"},
+		{name: "horizontal rule isolated", in: "text\n---\nmore", want: "text\n\n---\n\nmore"},
+		{name: "leading blank lines dropped", in: "\n\n\ntext", want: "text"},
+		{name: "blank lines inside a fence are kept", in: "```\na\n\n\nb\n```", want: "```\na\n\n\nb\n```"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeMarkdown(tc.in); got != tc.want {
+				t.Fatalf("normalizeMarkdown(%q) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
 	}

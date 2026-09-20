@@ -8,6 +8,20 @@ import (
 	"github.com/gkoos/confluence2md/internal/confluence"
 )
 
+func TestCommentsToMarkdown_PreservesCodeBlockBlankLines(t *testing.T) {
+	const body = `{"version":1,"type":"doc","content":[{"type":"codeBlock","attrs":{"language":"text"},"content":[{"type":"text","text":"alpha\n\n\ntheta"}]}]}`
+	comments := []confluence.CommentData{
+		{ID: "c1", Author: "Simon Dunn", Body: body},
+	}
+
+	got := CommentsToMarkdown(comments)
+
+	want := "```text\nalpha\n\n\ntheta\n```"
+	if !strings.Contains(got, want) {
+		t.Fatalf("comment code content was rewritten\n--- want ---\n%q\n--- got ---\n%q", want, got)
+	}
+}
+
 func TestCommentsToMarkdown_Empty(t *testing.T) {
 	if got := CommentsToMarkdown(nil); got != "" {
 		t.Fatalf("expected empty comments markdown, got: %q", got)
@@ -74,7 +88,7 @@ func TestCommentsToMarkdown_PreservesParagraphBoundaries(t *testing.T) {
 			ID:        "c1",
 			Author:    "Simon Dunn",
 			CreatedAt: time.Date(2026, 2, 13, 0, 0, 0, 0, time.UTC),
-			Body: `{"version":1,"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Re the above"}]},{"type":"paragraph","content":[{"type":"text","text":"RPS have a business rule of ten files per upload."}]}]}`,
+			Body:      `{"version":1,"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Re the above"}]},{"type":"paragraph","content":[{"type":"text","text":"RPS have a business rule of ten files per upload."}]}]}`,
 		},
 	}
 
