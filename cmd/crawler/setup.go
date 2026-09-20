@@ -138,7 +138,7 @@ func extractSeedPageRefs(clients *confluenceclient.ClientSet, seeds []string) ([
 			return nil, fmt.Errorf("invalid page ID %q: %w", page.ID, err)
 		}
 
-		key := store.PageKey(host, id, true)
+		key := store.PageKey(host, id)
 		if !seen[key] {
 			seen[key] = true
 			refs = append(refs, store.PageRef{Host: host, ID: id})

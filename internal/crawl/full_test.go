@@ -190,7 +190,7 @@ func TestRunStoresDeletedNodeWithoutEnqueuingChildren(t *testing.T) {
 	if visited[3] != 0 {
 		t.Fatalf("expected child of deleted node not to be visited, got %d visits", visited[3])
 	}
-	deletedPage, ok := results[store.PageKey(testHost, 2, true)]
+	deletedPage, ok := results[store.PageKey(testHost, 2)]
 	if !ok || deletedPage == nil || !deletedPage.Deleted {
 		t.Fatalf("expected deleted node in crawl results, got %#v", deletedPage)
 	}
@@ -280,9 +280,10 @@ func TestProcessUpdatesNodeTreatsNotFoundAsDeleted(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
+	pageKey := store.PageKey(client.Host(), 42)
 	cs := NewCrawlSession(newTestClientSet(client), cfg, "SPACE")
 	cs.EnableUpdatesMode(map[string]store.PageRecord{
-		"42": {ID: "42", Title: "Deleted page"},
+		pageKey: {ID: pageKey, Title: "Deleted page"},
 	})
 
 	result := cs.processUpdatesNode(context.Background(), client.Host(), 42, 3)
@@ -327,9 +328,10 @@ func TestProcessUpdatesNodeTreatsTrashedStatusAsDeleted(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
+	pageKey := store.PageKey(client.Host(), 42)
 	cs := NewCrawlSession(newTestClientSet(client), cfg, "SPACE")
 	cs.EnableUpdatesMode(map[string]store.PageRecord{
-		"42": {ID: "42", Title: "Page To Be Deleted"},
+		pageKey: {ID: pageKey, Title: "Page To Be Deleted"},
 	})
 
 	result := cs.processUpdatesNode(context.Background(), client.Host(), 42, 1)
@@ -370,9 +372,10 @@ func TestProcessUpdatesNodeFallsBackToFullFetchForTransientError(t *testing.T) {
 		t.Fatalf("NewClient returned error: %v", err)
 	}
 
+	pageKey := store.PageKey(client.Host(), 42)
 	cs := NewCrawlSession(newTestClientSet(client), cfg, "SPACE")
 	cs.EnableUpdatesMode(map[string]store.PageRecord{
-		"42": {ID: "42", Title: "Existing page"},
+		pageKey: {ID: pageKey, Title: "Existing page"},
 	})
 
 	result := cs.processUpdatesNode(context.Background(), client.Host(), 42, 1)
@@ -479,10 +482,12 @@ func TestProcessUpdatesNodeHandlesDeletionBetweenStateAndFullFetch(t *testing.T)
 	defer server.Close()
 
 	cs := newTestCrawlSession(t, server.URL)
+	host := cs.clients.Hosts()[0]
+	pageKey := store.PageKey(host, 42)
 	cs.EnableUpdatesMode(map[string]store.PageRecord{
-		"42": {ID: "42", Title: "Page", Version: 1},
+		pageKey: {ID: pageKey, Title: "Page", Version: 1},
 	})
-	result := cs.processUpdatesNode(context.Background(), cs.clients.Hosts()[0], 42, 1)
+	result := cs.processUpdatesNode(context.Background(), host, 42, 1)
 
 	assertDeletedNodeResult(t, result, 42, 1, "")
 	if requestCount != 2 {

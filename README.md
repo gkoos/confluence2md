@@ -177,6 +177,14 @@ crawled independently, and cross-host links are followed and deduplicated as a
 single graph — every page is fetched and rendered exactly once, regardless of
 how many seeds or links reach it.
 
+Pages are keyed by `host/page-id` everywhere — metadata keys, front matter IDs,
+link IDs and seed IDs are all host-qualified, including for single-host crawls,
+so a page never has two identities. Filenames embed that key with the `/` (and
+any port `:`) encoded as `_`, so they stay flat:
+`{title-slug}_{host}_{page-id}.md` and
+`attachments/{host}_{page-id}_{filename}`. Pages from different tenants that
+share a numeric page ID therefore never collide.
+
 One credential (`confluence.username` / `confluence.token` / `auth_mode`) is
 shared across every host, so the same account/token must have read access on
 all of them. Per-host credentials are not supported yet.
@@ -298,10 +306,10 @@ Note: current output commit behavior is direct-write (non-transactional).
 Every page is saved as:
 
 ```
-{title-slug}_{page-id}.md
+{title-slug}_{host}_{page-id}.md
 ```
 
-The page ID is always included so renames (title changes) are detectable and the file can be consistently identified across runs. Attachments are saved under an `attachments/` directory alongside the pages.
+The host and page ID are always included so renames (title changes) are detectable and the file can be consistently identified across runs. Attachments are saved under an `attachments/` directory alongside the pages, named `{host}_{page-id}_{original-filename}`. A host carrying a port has its `:` encoded as `_` (e.g. `127.0.0.1_8080_123_diagram.png`), so every output name stays a single path segment.
 
 **How link rewriting works — two passes:**
 
@@ -316,9 +324,9 @@ Because the rewrite pass only runs after crawling is complete, every decision is
 output/
 ├── index.md                      # start-here page: crawl summary + seed links
 ├── metadata.json                  # all-pages index: metadata + link graph
-├── {title-slug}_{page-id}.md      # one file per page (front matter + page body + comments)
+├── {title-slug}_{host}_{page-id}.md   # one file per page (front matter + page body + comments)
 └── attachments/
-  └── {page-id}_{original-filename}
+  └── {host}_{page-id}_{original-filename}   # ports use "_": 127.0.0.1_8080_123_diagram.png
 ```
 
 ### metadata.json Structure

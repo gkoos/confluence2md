@@ -14,7 +14,7 @@ import (
 // PageRecord represents a single page entry in metadata.json.
 type PageRecord struct {
 	ID                  string    `json:"id"`
-	Host                string    `json:"host,omitempty"` // tenant host; empty for single-host crawls
+	Host                string    `json:"host,omitempty"` // tenant host the page was fetched from
 	Title               string    `json:"title"`
 	LocalPath           string    `json:"local_path"`
 	Version             int       `json:"version"`
@@ -166,6 +166,12 @@ func (w *Writer) MarkCompletedCheckpoint(mode string, startedAt, completedAt tim
 // AddPage adds a crawled page to metadata with full graph information.
 func (w *Writer) AddPage(pageID string, pageRecord PageRecord) error {
 	filename := generateFilename(pageRecord.Title, pageID)
+	// Defense in depth: the page file must stay directly inside the output
+	// directory. A nested name would fail at write time with a confusing "path
+	// not found" error because the parent directory is never created.
+	if strings.ContainsAny(filename, `/\`) {
+		return fmt.Errorf("write page file %s: filename is not a single path segment", filename)
+	}
 	filepath := filepath.Join(w.outputDir, filename)
 	rendered := ComposeMarkdownWithFrontMatter(pageID, pageRecord, w.metadata.SeedPageIDs, pageRecord.StorageFormat)
 
@@ -232,13 +238,14 @@ func (w *Writer) SaveMetadata() error {
 }
 
 // generateFilename creates a deterministic filename from page title and ID.
-// Format: {title-slug}_{page-id}.md
+// Format: {title-slug}_{page-key}.md, where the page key is flattened into a
+// single path segment by FlattenPageKey (keys are "host/id").
 func generateFilename(title, pageID string) string {
 	s := slug.Make(title)
 	if s == "" {
 		s = "page"
 	}
-	return fmt.Sprintf("%s_%s.md", s, pageID)
+	return fmt.Sprintf("%s_%s.md", s, FlattenPageKey(pageID))
 }
 
 // loadMetadata loads existing metadata.json from disk if it exists.

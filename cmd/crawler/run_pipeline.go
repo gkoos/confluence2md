@@ -21,7 +21,6 @@ type runContext struct {
 	dryRun              bool
 	cfg                 *config.Config
 	clients             *confluenceclient.ClientSet
-	qualify             bool
 	writer              *store.Writer
 	crawler             *crawl.CrawlSession
 	seeds               []store.PageRef
@@ -101,14 +100,13 @@ func bootstrapRun(mode, cfgFile string, dryRun bool) (*runContext, error) {
 		dryRun:              dryRun,
 		cfg:                 cfg,
 		clients:             clients,
-		qualify:             len(cfg.SiteHosts()) > 1,
 		writer:              writer,
 		seeds:               seeds,
 		previousCheckpoint:  writer.LastSuccessfulCheckpoint(),
 		previousPages:       previousPages,
 		oldManagedArtifacts: managedArtifactSet(previousPages),
 	}
-	rc.writer.SetSeedPageIDs(pageRefsToStringIDs(rc.seeds, rc.qualify))
+	rc.writer.SetSeedPageIDs(pageRefsToStringIDs(rc.seeds))
 
 	fmt.Printf("\nStarting BFS crawl: %d seed(s), max depth %d, concurrency %d, rate %d rpm\n",
 		len(rc.seeds), cfg.Crawl.MaxDepth, cfg.Crawl.Concurrency, cfg.Crawl.RateLimitRPM)
@@ -180,7 +178,7 @@ func collectDeletedPageIDs(crawlResults map[string]*crawl.CrawledPage) map[strin
 	deletedPageIDs := make(map[string]struct{})
 	for _, crawledPage := range crawlResults {
 		if crawledPage != nil && crawledPage.Deleted {
-			deletedPageIDs[store.PageKey(crawledPage.Host, crawledPage.ID, true)] = struct{}{}
+			deletedPageIDs[store.PageKey(crawledPage.Host, crawledPage.ID)] = struct{}{}
 		}
 	}
 	return deletedPageIDs
@@ -205,7 +203,7 @@ func pruneDeletedOutgoingLinks(crawlResults map[string]*crawl.CrawledPage, delet
 }
 
 func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawledPage *crawl.CrawledPage) error {
-	pageIDStr := store.PageKey(crawledPage.Host, pageID, rc.qualify)
+	pageIDStr := store.PageKey(crawledPage.Host, pageID)
 	previous, ok := rc.previousPages[pageIDStr]
 	if !ok {
 		logPageWithLevel("ERR", pageID, "reused page missing from previous metadata")
@@ -229,11 +227,8 @@ func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawle
 
 	record := previous
 	record.Depth = crawledPage.Depth
-	record.Host = ""
-	if rc.qualify {
-		record.Host = crawledPage.Host
-	}
-	record.OutgoingLinks = pageRefsToStringIDs(crawledPage.OutgoingLinks, rc.qualify)
+	record.Host = crawledPage.Host
+	record.OutgoingLinks = pageRefsToStringIDs(crawledPage.OutgoingLinks)
 	record.IncomingLinks = []string{}
 	if strings.TrimSpace(crawledPage.AttachmentSignature) != "" {
 		record.AttachmentSignature = crawledPage.AttachmentSignature
@@ -266,7 +261,7 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		return fmt.Errorf("fetch error")
 	}
 
-	pageIDStr := store.PageKey(crawledPage.Host, pageID, rc.qualify)
+	pageIDStr := store.PageKey(crawledPage.Host, pageID)
 	markdown := crawledPage.Markdown
 
 	if !rc.dryRun {
@@ -342,7 +337,7 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		CanonicalURL:        crawledPage.CanonicalURL,
 		SpaceKey:            crawledPage.SpaceKey,
 		Depth:               crawledPage.Depth,
-		OutgoingLinks:       pageRefsToStringIDs(crawledPage.OutgoingLinks, rc.qualify),
+		OutgoingLinks:       pageRefsToStringIDs(crawledPage.OutgoingLinks),
 		IncomingLinks:       []string{},
 		Attachments:         savedAttachments,
 		AttachmentSignature: crawledPage.AttachmentSignature,
@@ -352,9 +347,7 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		LastModifiedByID:    crawledPage.LastModifiedByID,
 		LastModifiedByName:  crawledPage.LastModifiedByName,
 	}
-	if rc.qualify {
-		record.Host = crawledPage.Host
-	}
+	record.Host = crawledPage.Host
 
 	// Parse temporal metadata
 	if crawledPage.CreatedAt != "" {
@@ -455,7 +448,7 @@ func logPageAttachmentWarning(pageID int64, err error) {
 func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error) {
 	if rc.dryRun {
 		pagesPreview := snapshotPageRecords(rc.writer.GetPages())
-		pruneMetadataToCrawledSet(pagesPreview, rc.crawlResults, rc.qualify)
+		pruneMetadataToCrawledSet(pagesPreview, rc.crawlResults)
 		rebuildIncomingLinks(pagesPreview)
 
 		reconcileStats := previewManagedArtifactReconcile(rc.previousPages, pagesPreview)
@@ -466,9 +459,9 @@ func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error
 		}, nil
 	}
 
-	pruneMetadataToCrawledSet(rc.writer.GetPages(), rc.crawlResults, rc.qualify)
+	pruneMetadataToCrawledSet(rc.writer.GetPages(), rc.crawlResults)
 
-	rewriteStats, err := finalizeTraversalOutput(rc.cfg.Output.Dir, rc.writer, rc.qualify)
+	rewriteStats, err := finalizeTraversalOutput(rc.cfg.Output.Dir, rc.writer)
 	if err != nil {
 		return nil, fmt.Errorf("finalize traversal output: %w", err)
 	}

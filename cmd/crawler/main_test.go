@@ -102,24 +102,35 @@ func TestRebuildIncomingLinks_ResetsAndRecomputesDeterministically(t *testing.T)
 }
 
 func TestPruneMetadataToCrawledSet_RemovesUnreachableRecords(t *testing.T) {
+	const host = "company1.atlassian.net"
+	const otherHost = "company2.atlassian.net"
+
+	keptKey := store.PageKey(host, 1)
+	unreachableKey := store.PageKey(host, 2)
+	samePageIDOtherHostKey := store.PageKey(otherHost, 1)
+
 	pages := map[string]store.PageRecord{
-		"1": {ID: "1"},
-		"2": {ID: "2"},
+		keptKey:                {ID: keptKey, Host: host},
+		unreachableKey:         {ID: unreachableKey, Host: host},
+		samePageIDOtherHostKey: {ID: samePageIDOtherHostKey, Host: otherHost},
 	}
 	results := map[string]*crawl.CrawledPage{
-		"1": {ID: 1},
+		keptKey: {ID: 1, Host: host},
 	}
 
-	pruneMetadataToCrawledSet(pages, results, false)
+	pruneMetadataToCrawledSet(pages, results)
 
 	if len(pages) != 1 {
 		t.Fatalf("expected 1 page after prune, got %d", len(pages))
 	}
-	if _, ok := pages["1"]; !ok {
-		t.Fatalf("expected page 1 to remain")
+	if _, ok := pages[keptKey]; !ok {
+		t.Fatalf("expected page %q to remain", keptKey)
 	}
-	if _, ok := pages["2"]; ok {
-		t.Fatalf("expected page 2 to be removed")
+	if _, ok := pages[unreachableKey]; ok {
+		t.Fatalf("expected page %q to be removed", unreachableKey)
+	}
+	if _, ok := pages[samePageIDOtherHostKey]; ok {
+		t.Fatalf("expected page %q (same numeric ID, different host) to be removed", samePageIDOtherHostKey)
 	}
 }
 
@@ -684,27 +695,31 @@ func TestProcessReusedPage_DryRunSkipsArtifactMaterialization(t *testing.T) {
 }
 
 func TestPruneDeletedOutgoingLinksFiltersEverySurvivingPage(t *testing.T) {
+	const host = "company1.atlassian.net"
+	key := func(id int64) string { return store.PageKey(host, id) }
+	ref := func(id int64) store.PageRef { return store.PageRef{Host: host, ID: id} }
+
 	crawlResults := map[string]*crawl.CrawledPage{
-		"1": {ID: 1, Reused: true, OutgoingLinks: []store.PageRef{{ID: 2}, {ID: 3}, {ID: 2}}},
-		"2": {ID: 2, Deleted: true, OutgoingLinks: []store.PageRef{{ID: 4}}},
-		"3": {ID: 3, OutgoingLinks: []store.PageRef{{ID: 2}, {ID: 4}}},
-		"4": {ID: 4},
+		key(1): {ID: 1, Host: host, Reused: true, OutgoingLinks: []store.PageRef{ref(2), ref(3), ref(2)}},
+		key(2): {ID: 2, Host: host, Deleted: true, OutgoingLinks: []store.PageRef{ref(4)}},
+		key(3): {ID: 3, Host: host, OutgoingLinks: []store.PageRef{ref(2), ref(4)}},
+		key(4): {ID: 4, Host: host},
 	}
 
 	deletedPageIDs := collectDeletedPageIDs(crawlResults)
-	if _, ok := deletedPageIDs["2"]; !ok || len(deletedPageIDs) != 1 {
+	if _, ok := deletedPageIDs[key(2)]; !ok || len(deletedPageIDs) != 1 {
 		t.Fatalf("unexpected deleted page set: %#v", deletedPageIDs)
 	}
 
 	pruneDeletedOutgoingLinks(crawlResults, deletedPageIDs)
 
-	if got := crawlResults["1"].OutgoingLinks; len(got) != 1 || got[0].ID != 3 {
+	if got := crawlResults[key(1)].OutgoingLinks; len(got) != 1 || got[0].ID != 3 {
 		t.Fatalf("unexpected reused-page outgoing links: %#v", got)
 	}
-	if got := crawlResults["3"].OutgoingLinks; len(got) != 1 || got[0].ID != 4 {
+	if got := crawlResults[key(3)].OutgoingLinks; len(got) != 1 || got[0].ID != 4 {
 		t.Fatalf("unexpected rerendered-page outgoing links: %#v", got)
 	}
-	if got := crawlResults["2"].OutgoingLinks; len(got) != 1 || got[0].ID != 4 {
+	if got := crawlResults[key(2)].OutgoingLinks; len(got) != 1 || got[0].ID != 4 {
 		t.Fatalf("expected deleted page payload to remain untouched, got %#v", got)
 	}
 }
