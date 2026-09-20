@@ -103,7 +103,7 @@ func TestRequestRouting_PerMode(t *testing.T) {
 			if _, err := client.SearchPagesByCQL(ctx, "space=ABC"); err != nil {
 				t.Fatalf("SearchPagesByCQL: %v", err)
 			}
-			_ = client.GetUserDisplayName(ctx, "u1-"+mode) // cache key varies per subtest to force a real request
+			_ = client.GetUserDisplayName(ctx, "u1")
 
 			var buf discardWriter
 			_ = client.DownloadAttachment(ctx, AttachmentData{ID: "a1", PageID: "123"}, 0, buf)

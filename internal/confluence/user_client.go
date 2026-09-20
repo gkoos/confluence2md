@@ -8,14 +8,40 @@ import (
 	"sync"
 )
 
-// userNameCache is an in-memory cache for account ID to display name lookups
+// userNameCache is an in-memory account ID -> display name cache scoped to a
+// single Client.
+//
+// It is deliberately per-client instead of process-wide: a display name is only
+// valid for the context that resolved it (tenant host, credentials, credential
+// mode), and Confluence restricts what a caller may see based on the target
+// user's profile visibility settings.
+//
+// Failed lookups are never stored. Leaving the entry absent lets a later call
+// retry, instead of permanently blanking that author for every consumer sharing
+// the client. Successful responses are cached even when they resolve to an empty
+// name, because that is a real answer (displayName and publicName both
+// restricted).
 type userNameCache struct {
 	mu    sync.RWMutex
 	names map[string]string
 }
 
-var globalUserCache = &userNameCache{
-	names: make(map[string]string),
+func (c *userNameCache) lookup(accountID string) (string, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	name, ok := c.names[accountID]
+	return name, ok
+}
+
+func (c *userNameCache) store(accountID, name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.names == nil {
+		c.names = make(map[string]string)
+	}
+	c.names[accountID] = name
 }
 
 // userResponse represents the Confluence User API response
@@ -27,20 +53,17 @@ type userResponse struct {
 
 // GetUserDisplayName resolves a Confluence account ID to a display name.
 // Returns empty string on error (best-effort, won't fail the crawl).
-// Results are cached in memory to avoid duplicate API calls.
+// Results are cached per Client; failures are not cached, so a later call can
+// retry instead of inheriting an earlier transient failure.
 func (c *Client) GetUserDisplayName(ctx context.Context, accountID string) string {
 	accountID = strings.TrimSpace(accountID)
 	if accountID == "" {
 		return ""
 	}
 
-	// Check cache first
-	globalUserCache.mu.RLock()
-	if name, ok := globalUserCache.names[accountID]; ok {
-		globalUserCache.mu.RUnlock()
+	if name, ok := c.userNames.lookup(accountID); ok {
 		return name
 	}
-	globalUserCache.mu.RUnlock()
 
 	// Fetch from API using direct HTTP call (consistent with comments_client.go pattern)
 	// Confluence v1 REST API: GET /wiki/rest/api/user?accountId={accountId}
@@ -49,9 +72,6 @@ func (c *Client) GetUserDisplayName(ctx context.Context, accountID string) strin
 	req, err := c.newAuthedRequest(ctx, "GET", endpoint, nil)
 	if err != nil {
 		fmt.Printf("Warning: failed to create user request for %s: %v\n", accountID, err)
-		globalUserCache.mu.Lock()
-		globalUserCache.names[accountID] = ""
-		globalUserCache.mu.Unlock()
 		return ""
 	}
 
@@ -60,9 +80,6 @@ func (c *Client) GetUserDisplayName(ctx context.Context, accountID string) strin
 	var user userResponse
 	if err := c.doJSONRequest(req, &user); err != nil {
 		fmt.Printf("Warning: failed to fetch user %s: %v\n", accountID, err)
-		globalUserCache.mu.Lock()
-		globalUserCache.names[accountID] = ""
-		globalUserCache.mu.Unlock()
 		return ""
 	}
 
@@ -71,10 +88,7 @@ func (c *Client) GetUserDisplayName(ctx context.Context, accountID string) strin
 		displayName = strings.TrimSpace(user.PublicName)
 	}
 
-	// Cache the result
-	globalUserCache.mu.Lock()
-	globalUserCache.names[accountID] = displayName
-	globalUserCache.mu.Unlock()
+	c.userNames.store(accountID, displayName)
 
 	return displayName
 }

@@ -53,6 +53,7 @@ type Client struct {
 	username     string
 	token        string
 	mode         string
+	userNames    userNameCache // per-client display-name cache (see user_client.go)
 }
 
 // NewClient creates an authenticated Confluence Cloud client.
