@@ -5,6 +5,12 @@ on:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    # govulncheck reads a live vulnerability database, so a green main can go
+    # stale without any commit. Re-check weekly (go.mod tracks the latest 1.26
+    # patch, so a Go security release is picked up by Setup Go automatically).
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
