@@ -108,12 +108,16 @@ Expected behavior:
 - Links to crawled pages are rewritten to local relative links.
 - Links to uncrawled pages remain original URLs.
 - External URLs remain unchanged.
+- A page link with an anchor (`.../pages/123#Heading`) keeps the anchor (`<file>#Heading`), and a heading link that points at the page being written becomes a bare anchor (`#Heading`).
+- Link labels may contain brackets (`[[fcp-sfd-crm] Decision title](...)`) — those are rewritten like any other link.
+- Links inside fenced code blocks and inline code spans are left untouched, so documented example URLs are preserved verbatim.
 
 If links are not rewritten as expected:
 
 1. Confirm target pages were actually crawled.
 2. Confirm page IDs exist in metadata.json.
-3. Re-run full mode to rebuild the rewrite pass from a clean crawl set.
+3. Check whether the link sits inside a fenced code block or an inline code span — those are intentionally not rewritten.
+4. Re-run updates mode to rebuild the rewrite pass over the existing output, or full mode for a clean crawl set.
 
 ## Operational tips
 

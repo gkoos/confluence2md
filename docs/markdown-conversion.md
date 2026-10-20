@@ -110,6 +110,19 @@ ADF `text` nodes with a `link` mark → `[text](url)`. The URL comes directly fr
 
 `inlineCard` and `blockCard` nodes carry the Confluence page URL in `attrs.url`. These are emitted as full URLs. A subsequent rewrite pass ([internal/links/rewriter.go](../internal/links/rewriter.go)) converts any URL that maps to a crawled page ID into a relative local path.
 
+That pass scans the rendered Markdown instead of matching a regular expression, because a link label may itself contain brackets: pages whose titles start with a bracketed scope render as `[[fcp-sfd-crm] Decision title](https://…)`, which a "no closing bracket in the label" pattern cannot see. Matching rules:
+
+| Input link destination | Rewritten to |
+|---|---|
+| `https://org.atlassian.net/wiki/spaces/SFD/pages/123` | `decision-title_org.atlassian.net_123.md` |
+| `https://org.atlassian.net/wiki/spaces/4930699280/pages/123/?draftShareId=…` | `decision-title_org.atlassian.net_123.md` |
+| `https://org.atlassian.net/wiki/spaces/SFD/pages/123#Heading` | `decision-title_org.atlassian.net_123.md#Heading` |
+| `https://org.atlassian.net/wiki/spaces/SFD/pages/edit-v2/123#Heading` on page 123 itself | `#Heading` |
+| An uncrawled page, an external host, or a Jira issue link | unchanged |
+| A link inside a fenced code block or an inline code span | unchanged |
+
+Only link and image destinations change; the rest of the file (front matter, tables, prose) is left byte-for-byte identical. The pass is idempotent — running it again over already-relative links rewrites nothing — and it counts every destination it sees outside code spans in the run summary line `Markdown links rewritten to local paths: rewritten/seen`.
+
 ### Attachment image links
 
 `media` / `mediaInline` nodes are converted to Markdown image syntax:

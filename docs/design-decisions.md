@@ -105,6 +105,8 @@ Link rewriting is deliberately separated from rendering into two distinct passes
 
 **Pass 2 (post-crawl):** After all pages are written, `RewriteCrawledPageLinks` scans every output file for Markdown link targets, extracts page IDs from Confluence URL patterns, and replaces them with relative local paths if the target page was crawled.
 
+**Pass 2 scans instead of matching a regex.** The first implementation used `\[[^\]]+\]\(([^)\s]+)\)`. That pattern silently misses every link whose label contains a closing bracket — and Confluence titles routinely look like `[fcp-sfd-object-processor] 10MB per-file upload limit`, so an entire decision-records page was exported with absolute URLs while its target files sat next to it on disk. Balanced brackets cannot be expressed by a regular expression without recursion, and pulling in a full Markdown parser is a large dependency for one pass, so the rewriter walks the rendered text directly: it tracks fenced code blocks and inline code spans, finds each `](`, and walks backwards to the matching `[` with a depth counter. Walking the text also yields the fix for a second silent corruption — example links inside code blocks are now left alone, where the regex rewrite used to rewrite them.
+
 Why separate passes?
 
 - **The renderer runs concurrently during the crawl.** At render time, it is not yet known which pages will be in the final output set. A page linked from an early-crawled page may not have been processed yet.
