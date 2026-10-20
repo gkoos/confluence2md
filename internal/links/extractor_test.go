@@ -57,3 +57,73 @@ func TestExtractPageIDsFromADFWithStats_MultiHostCrossHostLinkIsInScope(t *testi
 		t.Fatalf("expected cross-host link to be in scope, got externalSkipped=%d", externalSkipped)
 	}
 }
+
+// TestExtractPageIDFromURL covers every Confluence URL shape the pass-2 rewrite
+// relies on, including the editor's /pages/edit-v2/{id} form that Confluence
+// emits for links to headings on the same page.
+func TestExtractPageIDFromURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want int64
+	}{
+		{
+			name: "space-scoped path",
+			url:  "https://example.atlassian.net/wiki/spaces/SFD/pages/123/Some+Page",
+			want: 123,
+		},
+		{
+			name: "numeric space key with draftShareId query",
+			url:  "https://example.atlassian.net/wiki/spaces/4930699280/pages/456/?draftShareId=3e8da1ea",
+			want: 456,
+		},
+		{
+			name: "pageId query parameter",
+			url:  "https://example.atlassian.net/wiki/pages/viewpage.action?pageId=789",
+			want: 789,
+		},
+		{
+			name: "edit-v2 link to a heading on the same page",
+			url:  "https://example.atlassian.net/wiki/spaces/FALSSFDO/pages/edit-v2/321#Cognito",
+			want: 321,
+		},
+		{
+			name: "edit-v2 link without a space segment",
+			url:  "https://example.atlassian.net/wiki/pages/edit-v2/654",
+			want: 654,
+		},
+		{
+			name: "bare page path without a space segment",
+			url:  "https://example.atlassian.net/wiki/pages/987",
+			want: 987,
+		},
+		{
+			name: "relative path",
+			url:  "/wiki/spaces/SFD/pages/111",
+			want: 111,
+		},
+		{
+			name: "jira issue link has no page id",
+			url:  "https://example.atlassian.net/browse/SFD2-258",
+			want: 0,
+		},
+		{
+			name: "attachment download link has no page id",
+			url:  "https://example.atlassian.net/wiki/download/attachments/123/diagram.png",
+			want: 0,
+		},
+		{
+			name: "empty url",
+			url:  "",
+			want: 0,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := ExtractPageIDFromURL(test.url); got != test.want {
+				t.Fatalf("ExtractPageIDFromURL(%q) = %d, want %d", test.url, got, test.want)
+			}
+		})
+	}
+}

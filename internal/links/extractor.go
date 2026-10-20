@@ -63,6 +63,8 @@ func ExtractPageIDsFromADFWithStats(adfJSON, sourceHost string, allowedHosts []s
 // - /spaces/{space}/pages/{id}/{title}
 // - /wiki/pages/viewpage.action?pageId={id}
 // - /wiki/spaces/{spaceId}/pages/{id}/?draftShareId=...
+// - /spaces/{space}/pages/edit-v2/{id}#{anchor} (same-page heading links)
+// - /wiki/pages/{id}
 // - Full URLs with host
 // Returns 0 if no valid ID found
 func ExtractPageIDFromURL(urlStr string) int64 {
@@ -92,21 +94,25 @@ func ExtractPageIDFromURL(urlStr string) int64 {
 // Handles patterns:
 // - /spaces/SFD/pages/6511563548/...
 // - /wiki/spaces/4930699280/pages/6511563548/...
-// - /wiki/pages/viewpage.action?pageId=...
+// - /spaces/SFD/pages/edit-v2/6511563548#Anchor (same-page heading links)
+// - /wiki/pages/edit-v2/6511563548 and /wiki/pages/6511563548
+// - /wiki/pages/viewpage.action?pageId=... (handled by the query-parameter path)
 func extractIDFromPath(path string) int64 {
 	// Pattern 1: /spaces/{KEY}/pages/{ID}/ or /wiki/spaces/{KEY}/pages/{ID}/
-	// This catches both /spaces/SFD/pages/6511563548 and /wiki/spaces/SFD/pages/6511563548
-	spacesPageRegex := regexp.MustCompile(`/(?:wiki/)?spaces/[^/]+/pages/(\d+)`)
+	// This catches both /spaces/SFD/pages/6511563548 and
+	// /wiki/spaces/SFD/pages/6511563548, plus the editor's /pages/edit-v2/{ID}
+	// form that Confluence uses for links to headings on the page itself.
+	spacesPageRegex := regexp.MustCompile(`/(?:wiki/)?spaces/[^/]+/pages/(?:edit-v2/)?(\d+)`)
 	if match := spacesPageRegex.FindStringSubmatch(path); len(match) > 1 {
 		if id, err := strconv.ParseInt(match[1], 10, 64); err == nil {
 			return id
 		}
 	}
 
-	// Pattern 2: /wiki/spaces/{NUMERIC_ID}/pages/{ID}/
-	// Catches /wiki/spaces/4930699280/pages/6511563548/
-	wikiSpacesPagesRegex := regexp.MustCompile(`/wiki/spaces/\d+/pages/(\d+)`)
-	if match := wikiSpacesPagesRegex.FindStringSubmatch(path); len(match) > 1 {
+	// Pattern 2: /pages/{ID} without a space segment, with or without the
+	// /edit-v2/ segment: /wiki/pages/6511563548.
+	pagesRegex := regexp.MustCompile(`/(?:wiki/)?pages/(?:edit-v2/)?(\d+)`)
+	if match := pagesRegex.FindStringSubmatch(path); len(match) > 1 {
 		if id, err := strconv.ParseInt(match[1], 10, 64); err == nil {
 			return id
 		}
