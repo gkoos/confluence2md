@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2](https://github.com/gkoos/confluence2md/compare/v1.6.1...v1.6.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* rewrite links with bracketed labels and self-anchor links ([#116](https://github.com/gkoos/confluence2md/issues/116)) ([57fe316](https://github.com/gkoos/confluence2md/commit/57fe3167c8ac82d4be07ddc4987da7a595a7f250))
+
 ## [1.6.1](https://github.com/gkoos/confluence2md/compare/v1.6.0...v1.6.1) (2026-09-20)
 
 
