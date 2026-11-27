@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gkoos/confluence2md/internal/config"
@@ -49,16 +51,29 @@ func run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), rc.cfg.Crawl.Timeout())
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	go func() {
+		// Restore default handling after the first signal so a second one ends the process.
+		<-signalCtx.Done()
+		stopSignals()
+	}()
+
+	ctx, cancel := context.WithTimeout(signalCtx, rc.cfg.Crawl.Timeout())
 	defer cancel()
 
 	if err := executeTraversal(ctx, rc); err != nil {
-		return err
+		return interruptedOr(signalCtx, err)
 	}
 
 	metrics := &runMetrics{}
 	if err := processTraversalResults(ctx, rc, metrics); err != nil {
-		return err
+		return interruptedOr(signalCtx, err)
+	}
+
+	// Nothing is finalized after an interrupt, so the checkpoint is never advanced.
+	if signalCtx.Err() != nil {
+		return interruptedOr(signalCtx, signalCtx.Err())
 	}
 
 	finalizeResult, err := finalizeRun(rc, metrics)
