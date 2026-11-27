@@ -12,6 +12,7 @@ import (
 	confluenceclient "github.com/gkoos/confluence2md/internal/confluence"
 	"github.com/gkoos/confluence2md/internal/convert"
 	"github.com/gkoos/confluence2md/internal/crawl"
+	"github.com/gkoos/confluence2md/internal/events"
 	"github.com/gkoos/confluence2md/internal/links"
 	"github.com/gkoos/confluence2md/internal/store"
 )
@@ -434,10 +435,12 @@ func previewPageAttachments(pageID string, attachments []confluenceclient.Attach
 func logPageWithLevel(level string, pageID int64, messageFormat string, args ...any) {
 	params := append([]any{level, pageID}, args...)
 	fmt.Printf("  [%s] Page %d: "+messageFormat+"\n", params...)
+	events.Emit("page_processed", map[string]any{"level": level, "page_id": pageID, "message": fmt.Sprintf(messageFormat, args...)})
 }
 
 func logPageAttachmentWarning(pageID int64, err error) {
 	fmt.Printf("  [WARN] Page %d attachment: %v\n", pageID, err)
+	events.Emit("warning", map[string]any{"page_id": pageID, "message": fmt.Sprintf("attachment: %v", err)})
 }
 
 func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error) {
@@ -502,6 +505,20 @@ func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error
 
 func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFinalizeResult, elapsed time.Duration) {
 	stats := rc.crawler.Stats()
+	events.Emit("run_finished", map[string]any{
+		"mode":                rc.mode,
+		"dry_run":             rc.dryRun,
+		"pages_crawled":       stats.TotalPages,
+		"pages_ok":            metrics.successCount,
+		"pages_failed":        metrics.errorCount,
+		"pages_deleted":       metrics.deletedCount,
+		"pages_reused":        metrics.reusedCount,
+		"pages_rerendered":    metrics.rerenderedCount,
+		"files_deleted":       finalizeResult.reconcileStats.Deleted,
+		"checkpoint_advanced": finalizeResult.checkpointAdvanced,
+		"output_dir":          rc.cfg.Output.Dir,
+		"elapsed_ms":          elapsed.Milliseconds(),
+	})
 	fmt.Printf("\n=== Crawl Complete ===\n")
 	if rc.dryRun {
 		fmt.Printf("Mode: %s (dry-run)\n", rc.mode)
