@@ -87,7 +87,11 @@ func resolveConfluenceAuth(cfg *config.Config) (*confluenceclient.AuthResolution
 
 	auth, err := confluenceclient.ResolveAuth(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("confluence credential validation failed: %w", err)
+		err = fmt.Errorf("confluence credential validation failed: %w", err)
+		if confluenceclient.IsAuthFailure(err) {
+			return nil, withExitCode(exitAuth, err)
+		}
+		return nil, err
 	}
 
 	fmt.Println("Confluence API access check passed.")
@@ -130,7 +134,11 @@ func extractSeedPageRefs(clients *confluenceclient.ClientSet, seeds []string) ([
 
 		page, err := client.GetPageBySeed(ctx, seed)
 		if err != nil {
-			return nil, fmt.Errorf("resolve seed %q: %w", seed, err)
+			err = fmt.Errorf("resolve seed %q: %w", seed, err)
+			if confluenceclient.IsAuthFailure(err) {
+				return nil, withExitCode(exitAuth, err)
+			}
+			return nil, err
 		}
 
 		id, err := strconv.ParseInt(page.ID, 10, 64)

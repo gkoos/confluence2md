@@ -235,6 +235,18 @@ confluence2md --config /path/to/config.yaml --mode full
 confluence2md --config /path/to/config.yaml validate
 ```
 
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | Any other failure (network error, timeout, I/O error) |
+| 2 | Configuration or `--mode` rejected before any request was made |
+| 3 | Confluence rejected the credentials, or the token lacks a required permission |
+| 4 | The crawl finished but some pages failed; output is incomplete and the successful-crawl checkpoint was not advanced |
+
+A run that ends with code 4 does not run the post-crawl hook.
+
 ### Post-crawl hook
 
 You can configure an optional post-crawl hook command in `config.yaml` to trigger follow-up automation after a successful crawl.
