@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gkoos/confluence2md/internal/config"
@@ -45,22 +47,38 @@ func init() {
 func run(cmd *cobra.Command, args []string) error {
 	fmt.Printf("confluence2md version %s\n", version)
 
-	rc, err := bootstrapRun(mode, cfgFile, dryRun)
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	go func() {
+		// Restore default handling after the first signal so a second one ends the process.
+		<-signalCtx.Done()
+		stopSignals()
+	}()
+
+	rc, err := bootstrapRun(signalCtx, mode, cfgFile, dryRun)
 	if err != nil {
-		return err
+		return interruptedOr(signalCtx, err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), rc.cfg.Crawl.Timeout())
+
+	ctx, cancel := context.WithTimeout(signalCtx, rc.cfg.Crawl.Timeout())
 	defer cancel()
 
 	if err := executeTraversal(ctx, rc); err != nil {
-		return err
+		return interruptedOr(signalCtx, err)
 	}
 
 	metrics := &runMetrics{}
 	if err := processTraversalResults(ctx, rc, metrics); err != nil {
-		return err
+		return interruptedOr(signalCtx, err)
 	}
 
+	// Nothing is finalized after an interrupt, so the checkpoint is never advanced.
+	if signalCtx.Err() != nil {
+		return interruptedOr(signalCtx, signalCtx.Err())
+	}
+
+	// A signal from here on is not acted on: stopping partway would leave pages written
+	// without their metadata.json.
 	finalizeResult, err := finalizeRun(rc, metrics)
 	if err != nil {
 		return err
@@ -84,7 +102,7 @@ func validate(cmd *cobra.Command, args []string) error {
 
 	printConfigSummary(cfg)
 
-	auth, err := resolveConfluenceAuth(cfg)
+	auth, err := resolveConfluenceAuth(context.Background(), cfg)
 	if err != nil {
 		return err
 	}

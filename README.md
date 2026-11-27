@@ -116,6 +116,8 @@ Notes:
 
 Copy `config.example.yaml` to `config.yaml` and fill in the required values.
 
+To keep the token out of `config.yaml` entirely, leave `confluence.token` empty and supply `CONFLUENCE_USERNAME` and `CONFLUENCE_TOKEN` in the process environment. There is deliberately no token flag, so the token never appears in a command line or shell history. This is the recommended way to run the tool from a script or another program.
+
 ```yaml
 confluence:
   # Your Atlassian account email
@@ -246,8 +248,9 @@ confluence2md --config /path/to/config.yaml validate
 | 2 | Configuration or `--mode` rejected before any request was made |
 | 3 | Confluence rejected the credentials, or the token lacks a required permission |
 | 4 | The crawl finished but some pages failed; output is incomplete and the successful-crawl checkpoint was not advanced |
+| 5 | Interrupted by SIGINT/SIGTERM (Ctrl+C); the checkpoint was not advanced, so rerun the crawl. A second signal ends the process immediately |
 
-A run that ends with code 4 does not run the post-crawl hook.
+A run that ends with code 4 or 5 does not run the post-crawl hook.
 
 ### Post-crawl hook
 

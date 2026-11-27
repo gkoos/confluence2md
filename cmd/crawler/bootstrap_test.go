@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -63,7 +64,7 @@ output:
 	}
 
 	// Call bootstrapRun with full mode
-	_, err := bootstrapRun("full", configFile, false)
+	_, err := bootstrapRun(context.Background(), "full", configFile, false)
 
 	// Expect error (seed extraction failed)
 	if err == nil {
@@ -137,7 +138,7 @@ output:
 	}
 
 	// Call bootstrapRun with full mode
-	_, err := bootstrapRun("full", configFile, false)
+	_, err := bootstrapRun(context.Background(), "full", configFile, false)
 
 	// Expect NO error (seed validation succeeded)
 	if err != nil {
@@ -215,7 +216,7 @@ output:
 	}
 
 	// Call bootstrapRun with updates mode
-	_, err := bootstrapRun("updates", configFile, false)
+	_, err := bootstrapRun(context.Background(), "updates", configFile, false)
 
 	// Expect error (seed extraction failed)
 	if err == nil {

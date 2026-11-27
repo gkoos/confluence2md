@@ -79,10 +79,10 @@ func clearDirectoryContents(dir string) error {
 // old two-step "construct client, then Ping" flow: mode resolution *is* the
 // validation probe now, since which base to construct the client against is
 // exactly what's being resolved.
-func resolveConfluenceAuth(cfg *config.Config) (*confluenceclient.AuthResolutions, error) {
+func resolveConfluenceAuth(parent context.Context, cfg *config.Config) (*confluenceclient.AuthResolutions, error) {
 	fmt.Println("\nResolving Confluence credential style and checking API access...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 
 	auth, err := confluenceclient.ResolveAuth(ctx, cfg)
@@ -118,11 +118,11 @@ func extractSpaceKeyFromSeed(seed string) string {
 
 // extractSeedPageRefs converts seed URLs to host-scoped page references,
 // resolving each seed through its own host's client.
-func extractSeedPageRefs(clients *confluenceclient.ClientSet, seeds []string) ([]store.PageRef, error) {
+func extractSeedPageRefs(parent context.Context, clients *confluenceclient.ClientSet, seeds []string) ([]store.PageRef, error) {
 	var refs []store.PageRef
 	seen := make(map[string]bool)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 
 	for _, seed := range seeds {
