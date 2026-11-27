@@ -142,6 +142,8 @@ crawl:
   rate_limit_rpm: 250
   # Maximum buffered discovered pages waiting to be processed
   queue_size: 10000
+  # Overall crawl time limit in minutes (optional; 0 or omitted = 10)
+  timeout_minutes: 10
 
 output:
   # Directory to write Markdown files, attachments, and metadata
