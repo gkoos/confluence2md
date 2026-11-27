@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"strings"
@@ -58,6 +59,9 @@ type CrawlConfig struct {
 
 // DefaultCrawlTimeout applies when crawl.timeout_minutes is unset.
 const DefaultCrawlTimeout = 10 * time.Minute
+
+// maxTimeoutMinutes is the largest whole-minute count a time.Duration can hold.
+const maxTimeoutMinutes = int64(math.MaxInt64 / time.Minute)
 
 // Timeout returns how long a crawl may run before it is cancelled.
 func (c CrawlConfig) Timeout() time.Duration {
@@ -152,6 +156,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Crawl.TimeoutMinutes < 0 {
 		errs = append(errs, "crawl.timeout_minutes must be >= 0")
+	}
+	if int64(c.Crawl.TimeoutMinutes) > maxTimeoutMinutes {
+		errs = append(errs, fmt.Sprintf("crawl.timeout_minutes must be <= %d", maxTimeoutMinutes))
 	}
 	if c.Output.Dir == "" {
 		errs = append(errs, "output.dir is required")

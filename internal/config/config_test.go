@@ -402,3 +402,21 @@ func TestValidate_RejectsNegativeTimeout(t *testing.T) {
 		t.Fatalf("expected timeout validation error, got: %v", err)
 	}
 }
+
+func TestValidate_RejectsTimeoutThatOverflowsDuration(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.Crawl.TimeoutMinutes = int(maxTimeoutMinutes) + 1
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "crawl.timeout_minutes must be <=") {
+		t.Fatalf("expected an upper-bound error, got: %v", err)
+	}
+
+	cfg.Crawl.TimeoutMinutes = int(maxTimeoutMinutes)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("the maximum must be accepted: %v", err)
+	}
+	if got := cfg.Crawl.Timeout(); got <= 0 {
+		t.Fatalf("the maximum produced a non-positive duration: %v", got)
+	}
+}
