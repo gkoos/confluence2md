@@ -116,6 +116,8 @@ Notes:
 
 Copy `config.example.yaml` to `config.yaml` and fill in the required values.
 
+To keep the token out of `config.yaml` entirely, leave `confluence.token` empty and supply `CONFLUENCE_USERNAME` and `CONFLUENCE_TOKEN` in the process environment. There is deliberately no token flag, so the token never appears in a command line or shell history. This is the recommended way to run the tool from a script or another program.
+
 ```yaml
 confluence:
   # Your Atlassian account email
