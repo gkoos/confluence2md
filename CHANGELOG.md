@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0](https://github.com/gkoos/confluence2md/compare/v1.6.2...v1.7.0) (2026-11-27)
+
+
+### Features
+
+* add --log-format json for machine-readable progress ([#123](https://github.com/gkoos/confluence2md/issues/123)) ([6031d22](https://github.com/gkoos/confluence2md/commit/6031d22643cf23a6e3d287822ca937575a77835e))
+* make the crawl time limit configurable ([#121](https://github.com/gkoos/confluence2md/issues/121)) ([6ed3cf2](https://github.com/gkoos/confluence2md/commit/6ed3cf23a5106bdac1e6be0cf015d293f1a7d4c6))
+* report failure types through distinct exit codes ([#120](https://github.com/gkoos/confluence2md/issues/120)) ([659fa34](https://github.com/gkoos/confluence2md/commit/659fa346dc89f3a98b55eee1291d09145142dee5))
+* stop the crawl cleanly on SIGINT and SIGTERM ([#122](https://github.com/gkoos/confluence2md/issues/122)) ([e5cf781](https://github.com/gkoos/confluence2md/commit/e5cf781f76472560b42ce14396204a701db149a4))
+
 ## [1.6.2](https://github.com/gkoos/confluence2md/compare/v1.6.1...v1.6.2) (2026-10-20)
 
 
