@@ -59,11 +59,11 @@ type runFinalizeResult struct {
 func bootstrapRun(mode, cfgFile string, dryRun bool) (*runContext, error) {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
-		return nil, fmt.Errorf("config error: %w", err)
+		return nil, withExitCode(exitConfig, fmt.Errorf("config error: %w", err))
 	}
 
 	if mode != "full" && mode != "updates" {
-		return nil, fmt.Errorf("--mode must be 'full' or 'updates'")
+		return nil, withExitCode(exitConfig, fmt.Errorf("--mode must be 'full' or 'updates'"))
 	}
 
 	printConfigSummary(cfg)

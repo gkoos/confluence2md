@@ -68,6 +68,10 @@ func run(cmd *cobra.Command, args []string) error {
 
 	elapsed := time.Since(startTime)
 	printRunSummary(rc, metrics, finalizeResult, elapsed)
+	if metrics.errorCount > 0 {
+		// The hook is documented to follow a successful crawl only.
+		return partialCrawlError(metrics.errorCount)
+	}
 	runPostCrawlHook(rc)
 	return nil
 }
@@ -75,7 +79,7 @@ func run(cmd *cobra.Command, args []string) error {
 func validate(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
-		return fmt.Errorf("config error: %w", err)
+		return withExitCode(exitConfig, fmt.Errorf("config error: %w", err))
 	}
 
 	printConfigSummary(cfg)
@@ -94,6 +98,6 @@ func validate(cmd *cobra.Command, args []string) error {
 func main() {
 	startTime = time.Now()
 	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+		os.Exit(exitCodeFor(err))
 	}
 }

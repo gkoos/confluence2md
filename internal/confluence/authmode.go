@@ -296,5 +296,31 @@ func describeProbeFailure(mode string, err error) error {
 	if !isAuthFailure(err) {
 		return err
 	}
-	return errors.New(DescribeAuthFailure(mode, "the validation page", err))
+	return &authRejectedError{message: DescribeAuthFailure(mode, "the validation page", err), cause: err}
+}
+
+// authRejectedError carries the operator-facing message while keeping the
+// original HTTP status reachable for IsAuthFailure.
+type authRejectedError struct {
+	message string
+	cause   error
+}
+
+func (e *authRejectedError) Error() string { return e.message }
+func (e *authRejectedError) Unwrap() error { return e.cause }
+
+// IsAuthFailure reports whether err means Confluence rejected the credentials
+// or the token lacks a permission, including when every credential style the
+// auto mode tried failed.
+func IsAuthFailure(err error) bool {
+	var resolution *AuthResolutionError
+	if errors.As(err, &resolution) {
+		for _, attempt := range resolution.Attempts {
+			if attempt.Err != nil && isAuthFailure(attempt.Err) {
+				return true
+			}
+		}
+		return false
+	}
+	return isAuthFailure(err)
 }
