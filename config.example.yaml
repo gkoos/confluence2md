@@ -42,6 +42,8 @@ crawl:
   # pages linked from the page body. Useful when pages exist only as sidebar
   # children with no inline links or macros. Shares max_depth with link traversal.
   follow_children: false
+  # Overall crawl time limit in minutes (0 or omitted = 10)
+  timeout_minutes: 10
 
 output:
   # Directory to write Markdown files, attachments, and metadata

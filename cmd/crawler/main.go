@@ -49,7 +49,7 @@ func run(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), rc.cfg.Crawl.Timeout())
 	defer cancel()
 
 	if err := executeTraversal(ctx, rc); err != nil {

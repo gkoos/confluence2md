@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/spf13/viper"
@@ -51,6 +52,19 @@ type CrawlConfig struct {
 	RateLimitRPM   int      `mapstructure:"rate_limit_rpm"`
 	QueueSize      int      `mapstructure:"queue_size"`
 	FollowChildren bool     `mapstructure:"follow_children"`
+	// TimeoutMinutes bounds the whole crawl; 0 selects DefaultCrawlTimeout.
+	TimeoutMinutes int `mapstructure:"timeout_minutes"`
+}
+
+// DefaultCrawlTimeout applies when crawl.timeout_minutes is unset.
+const DefaultCrawlTimeout = 10 * time.Minute
+
+// Timeout returns how long a crawl may run before it is cancelled.
+func (c CrawlConfig) Timeout() time.Duration {
+	if c.TimeoutMinutes <= 0 {
+		return DefaultCrawlTimeout
+	}
+	return time.Duration(c.TimeoutMinutes) * time.Minute
 }
 
 type OutputConfig struct {
@@ -135,6 +149,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Crawl.QueueSize <= 0 {
 		errs = append(errs, "crawl.queue_size must be > 0")
+	}
+	if c.Crawl.TimeoutMinutes < 0 {
+		errs = append(errs, "crawl.timeout_minutes must be >= 0")
 	}
 	if c.Output.Dir == "" {
 		errs = append(errs, "output.dir is required")

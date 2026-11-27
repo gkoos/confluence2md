@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // minimalValidYAML returns a config.yaml body that satisfies Validate() for
@@ -380,5 +381,24 @@ func TestValidate_RejectsHookWithWhitespaceOnlyCommand(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "post_crawl_hook.command must include a non-empty executable") {
 		t.Fatalf("expected post-crawl hook validation error, got: %s", err.Error())
+	}
+}
+
+func TestCrawlTimeout(t *testing.T) {
+	if got := (CrawlConfig{}).Timeout(); got != DefaultCrawlTimeout {
+		t.Fatalf("unset timeout = %v, want %v", got, DefaultCrawlTimeout)
+	}
+	if got := (CrawlConfig{TimeoutMinutes: 45}).Timeout(); got != 45*time.Minute {
+		t.Fatalf("timeout = %v, want 45m", got)
+	}
+}
+
+func TestValidate_RejectsNegativeTimeout(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.Crawl.TimeoutMinutes = -1
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "crawl.timeout_minutes must be >= 0") {
+		t.Fatalf("expected timeout validation error, got: %v", err)
 	}
 }
