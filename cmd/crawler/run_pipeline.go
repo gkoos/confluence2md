@@ -56,7 +56,7 @@ type runFinalizeResult struct {
 	checkpointAdvanced bool
 }
 
-func bootstrapRun(mode, cfgFile string, dryRun bool) (*runContext, error) {
+func bootstrapRun(ctx context.Context, mode, cfgFile string, dryRun bool) (*runContext, error) {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return nil, withExitCode(exitConfig, fmt.Errorf("config error: %w", err))
@@ -68,7 +68,7 @@ func bootstrapRun(mode, cfgFile string, dryRun bool) (*runContext, error) {
 
 	printConfigSummary(cfg)
 
-	auth, err := resolveConfluenceAuth(cfg)
+	auth, err := resolveConfluenceAuth(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -77,9 +77,14 @@ func bootstrapRun(mode, cfgFile string, dryRun bool) (*runContext, error) {
 
 	// Extract and validate seeds BEFORE clearing output directory.
 	// This ensures that a bad seed doesn't destroy existing output.
-	seeds, err := extractSeedPageRefs(clients, cfg.Crawl.Seeds)
+	seeds, err := extractSeedPageRefs(ctx, clients, cfg.Crawl.Seeds)
 	if err != nil {
 		return nil, fmt.Errorf("extract seed page IDs: %w", err)
+	}
+
+	// An interrupt must not reach the destructive step below.
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	// Now safe to clear output directory (seeds validated).
@@ -152,6 +157,11 @@ func processTraversalResults(ctx context.Context, rc *runContext, metrics *runMe
 	pruneDeletedOutgoingLinks(rc.crawlResults, deletedPageIDs)
 
 	for _, crawledPage := range rc.crawlResults {
+		// Stop before writing more pages once cancelled; the rest would only fail.
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("processing stopped: %w", err)
+		}
+
 		pageID := crawledPage.ID
 		if crawledPage.Deleted {
 			metrics.deletedCount++

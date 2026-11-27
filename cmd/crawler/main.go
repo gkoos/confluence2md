@@ -47,10 +47,6 @@ func init() {
 func run(cmd *cobra.Command, args []string) error {
 	fmt.Printf("confluence2md version %s\n", version)
 
-	rc, err := bootstrapRun(mode, cfgFile, dryRun)
-	if err != nil {
-		return err
-	}
 	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	go func() {
@@ -58,6 +54,11 @@ func run(cmd *cobra.Command, args []string) error {
 		<-signalCtx.Done()
 		stopSignals()
 	}()
+
+	rc, err := bootstrapRun(signalCtx, mode, cfgFile, dryRun)
+	if err != nil {
+		return interruptedOr(signalCtx, err)
+	}
 
 	ctx, cancel := context.WithTimeout(signalCtx, rc.cfg.Crawl.Timeout())
 	defer cancel()
@@ -76,6 +77,8 @@ func run(cmd *cobra.Command, args []string) error {
 		return interruptedOr(signalCtx, signalCtx.Err())
 	}
 
+	// A signal from here on is not acted on: stopping partway would leave pages written
+	// without their metadata.json.
 	finalizeResult, err := finalizeRun(rc, metrics)
 	if err != nil {
 		return err
@@ -99,7 +102,7 @@ func validate(cmd *cobra.Command, args []string) error {
 
 	printConfigSummary(cfg)
 
-	auth, err := resolveConfluenceAuth(cfg)
+	auth, err := resolveConfluenceAuth(context.Background(), cfg)
 	if err != nil {
 		return err
 	}
