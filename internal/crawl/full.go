@@ -11,6 +11,7 @@ import (
 	"github.com/gkoos/confluence2md/internal/config"
 	"github.com/gkoos/confluence2md/internal/confluence"
 	"github.com/gkoos/confluence2md/internal/convert"
+	"github.com/gkoos/confluence2md/internal/events"
 	"github.com/gkoos/confluence2md/internal/links"
 	"github.com/gkoos/confluence2md/internal/store"
 )
@@ -281,14 +282,24 @@ func (cs *CrawlSession) worker(ctx context.Context, wg *sync.WaitGroup) {
 		}
 
 		depthPrefix := fmt.Sprintf("D%d", item.depth)
+		pageEvent := map[string]any{"host": item.host, "page_id": item.pageID, "depth": item.depth, "title": title}
 		if result.FetchError != "" {
 			fmt.Printf("  [%s] ERR  %d — %s: %s\n", depthPrefix, item.pageID, title, result.FetchError)
+			pageEvent["status"] = "error"
+			pageEvent["error"] = result.FetchError
 		} else if result.Deleted {
 			fmt.Printf("  [%s] DEL  %d — %s\n", depthPrefix, item.pageID, title)
+			pageEvent["status"] = "deleted"
 		} else {
 			fmt.Printf("  [%s] %3d/%-3d  %d — %s  (+%d links, ext-skip:%d, queue:%d)\n",
 				depthPrefix, fetched, visited, item.pageID, title, childCount, externalSkipped, len(cs.queue))
+			pageEvent["status"] = "fetched"
+			pageEvent["fetched"] = fetched
+			pageEvent["visited"] = visited
+			pageEvent["links"] = childCount
+			pageEvent["queue"] = len(cs.queue)
 		}
+		events.Emit("crawl_page", pageEvent)
 
 		cs.pendingWork.Done()
 	}
@@ -400,6 +411,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID
 		if err != nil {
 			// Non-fatal: log but continue with whatever inline links we already have.
 			fmt.Printf("  [D%d] WARN  %d — children macro fetch failed: %v\n", depth, pageID, err)
+			events.Emit("warning", map[string]any{"host": host, "page_id": pageID, "depth": depth, "message": fmt.Sprintf("children macro fetch failed: %v", err)})
 		} else {
 			page.OutgoingLinks = links.DedupPageRefs(append(page.OutgoingLinks, refsForHost(host, childIDs)...))
 		}
@@ -416,6 +428,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID
 		if err != nil {
 			// Non-fatal: log but continue.
 			fmt.Printf("  [D%d] WARN  %d — contentbylabel CQL search failed: %v\n", depth, pageID, err)
+			events.Emit("warning", map[string]any{"host": host, "page_id": pageID, "depth": depth, "message": fmt.Sprintf("contentbylabel CQL search failed: %v", err)})
 			continue
 		}
 		page.OutgoingLinks = links.DedupPageRefs(append(page.OutgoingLinks, refsForHost(host, cqlIDs)...))

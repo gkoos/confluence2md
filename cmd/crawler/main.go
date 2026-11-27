@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gkoos/confluence2md/internal/config"
+	"github.com/gkoos/confluence2md/internal/events"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +21,7 @@ var (
 	cfgFile   string
 	mode      string
 	dryRun    bool
+	logFormat string
 	startTime time.Time
 )
 
@@ -41,11 +43,16 @@ func init() {
 	rootCmd.Flags().StringVar(&cfgFile, "config", "config.yaml", "Path to config file")
 	rootCmd.Flags().StringVar(&mode, "mode", "", "Crawl mode: full or updates (required)")
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview crawl scope and decisions without writing output artifacts")
+	rootCmd.PersistentFlags().StringVar(&logFormat, "log-format", "text", "Output format: text, or json (one event per line on stdout, human-readable text on stderr)")
 	rootCmd.AddCommand(validateCmd)
 }
 
 func run(cmd *cobra.Command, args []string) error {
+	if err := configureLogFormat(logFormat); err != nil {
+		return err
+	}
 	fmt.Printf("confluence2md version %s\n", version)
+	events.Emit("run_started", map[string]any{"version": version, "mode": mode, "dry_run": dryRun})
 
 	signalCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
@@ -95,6 +102,9 @@ func run(cmd *cobra.Command, args []string) error {
 }
 
 func validate(cmd *cobra.Command, args []string) error {
+	if err := configureLogFormat(logFormat); err != nil {
+		return err
+	}
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return withExitCode(exitConfig, fmt.Errorf("config error: %w", err))
@@ -116,6 +126,16 @@ func validate(cmd *cobra.Command, args []string) error {
 func main() {
 	startTime = time.Now()
 	if err := rootCmd.Execute(); err != nil {
+		reportFailure(err)
 		os.Exit(exitCodeFor(err))
 	}
+}
+
+// reportFailure emits run_failed when JSON events were requested.
+func reportFailure(err error) {
+	// Flag parsing can fail before any command enabled the events the user asked for.
+	if logFormat == "json" && !events.Enabled() {
+		_ = configureLogFormat(logFormat)
+	}
+	events.Emit("run_failed", map[string]any{"message": err.Error(), "exit_code": exitCodeFor(err)})
 }

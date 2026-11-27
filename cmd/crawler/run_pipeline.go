@@ -12,6 +12,7 @@ import (
 	confluenceclient "github.com/gkoos/confluence2md/internal/confluence"
 	"github.com/gkoos/confluence2md/internal/convert"
 	"github.com/gkoos/confluence2md/internal/crawl"
+	"github.com/gkoos/confluence2md/internal/events"
 	"github.com/gkoos/confluence2md/internal/links"
 	"github.com/gkoos/confluence2md/internal/store"
 )
@@ -165,7 +166,7 @@ func processTraversalResults(ctx context.Context, rc *runContext, metrics *runMe
 		pageID := crawledPage.ID
 		if crawledPage.Deleted {
 			metrics.deletedCount++
-			logPageWithLevel("INFO", pageID, "%s (deleted)", crawledPage.Title)
+			logPageWithLevel("INFO", crawledPage.Host, pageID, "%s (deleted)", crawledPage.Title)
 			continue
 		}
 		if rc.mode == "updates" && crawledPage.Reused {
@@ -216,7 +217,7 @@ func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawle
 	pageIDStr := store.PageKey(crawledPage.Host, pageID)
 	previous, ok := rc.previousPages[pageIDStr]
 	if !ok {
-		logPageWithLevel("ERR", pageID, "reused page missing from previous metadata")
+		logPageWithLevel("ERR", crawledPage.Host, pageID, "reused page missing from previous metadata")
 		return fmt.Errorf("reused page missing from previous metadata")
 	}
 	if rc.dryRun {
@@ -227,7 +228,7 @@ func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawle
 		materializedMarkdown := store.ComposeMarkdownWithFrontMatter(pageIDStr, previous, rc.writer.GetSeedPageIDs(), crawledPage.Markdown)
 		materialized, materializeErr := ensureLocalPageArtifact(rc.cfg.Output.Dir, previous, materializedMarkdown)
 		if materializeErr != nil {
-			logPageWithLevel("ERR", pageID, "reused page artifact check failed: %v", materializeErr)
+			logPageWithLevel("ERR", crawledPage.Host, pageID, "reused page artifact check failed: %v", materializeErr)
 			return materializeErr
 		}
 		if materialized {
@@ -246,9 +247,9 @@ func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawle
 
 	rc.writer.AddPageMetadata(pageIDStr, record)
 	if rc.dryRun {
-		logPageWithLevel("OK", pageID, "%s (reused, dry-run)", record.Title)
+		logPageWithLevel("OK", crawledPage.Host, pageID, "%s (reused, dry-run)", record.Title)
 	} else {
-		logPageWithLevel("OK", pageID, "%s (reused)", record.Title)
+		logPageWithLevel("OK", crawledPage.Host, pageID, "%s (reused)", record.Title)
 	}
 	metrics.successCount++
 	metrics.reusedCount++
@@ -267,7 +268,7 @@ func processReusedPage(rc *runContext, metrics *runMetrics, pageID int64, crawle
 
 func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetrics, pageID int64, crawledPage *crawl.CrawledPage) error {
 	if crawledPage.FetchError != "" {
-		logPageWithLevel("ERR", pageID, "%s", crawledPage.FetchError)
+		logPageWithLevel("ERR", crawledPage.Host, pageID, "%s", crawledPage.FetchError)
 		return fmt.Errorf("fetch error")
 	}
 
@@ -278,25 +279,25 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		var err error
 		markdown, err = absolutizeConfluenceLinks(markdown, "https://"+crawledPage.Host)
 		if err != nil {
-			logPageWithLevel("ERR", pageID, "absolutize links failed: %v", err)
+			logPageWithLevel("ERR", crawledPage.Host, pageID, "absolutize links failed: %v", err)
 			return err
 		}
 
 		markdown, err = enrichURLOnlyLinkLabels(ctx, markdown, rc.clientFor(crawledPage.Host))
 		if err != nil {
-			logPageWithLevel("WARN", pageID, "enrich links failed: %v", err)
+			logPageWithLevel("WARN", crawledPage.Host, pageID, "enrich links failed: %v", err)
 		}
 	}
 
 	if crawledPage.CommentFetchError != "" {
-		logPageWithLevel("WARN", pageID, "%s", crawledPage.CommentFetchError)
+		logPageWithLevel("WARN", crawledPage.Host, pageID, "%s", crawledPage.CommentFetchError)
 		metrics.commentFetchFailures++
 	}
 
 	var savedAttachments []string
 	if rc.cfg.Attachments.Download && len(crawledPage.Attachments) > 0 {
 		if crawledPage.AttachmentFetchError != "" {
-			logPageWithLevel("WARN", pageID, "%s", crawledPage.AttachmentFetchError)
+			logPageWithLevel("WARN", crawledPage.Host, pageID, "%s", crawledPage.AttachmentFetchError)
 		}
 		var results []store.AttachmentResult
 		if rc.dryRun {
@@ -306,7 +307,7 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		}
 		for _, r := range results {
 			if r.Error != nil {
-				logPageAttachmentWarning(pageID, r.Error)
+				logPageAttachmentWarning(crawledPage.Host, pageID, r.Error)
 			} else if r.Filename != "" {
 				savedAttachments = append(savedAttachments, r.Filename)
 				metrics.attachmentsDownloaded++
@@ -374,7 +375,7 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 		rc.writer.AddPageMetadata(pageIDStr, record)
 	} else {
 		if err := rc.writer.AddPage(pageIDStr, record); err != nil {
-			logPageWithLevel("ERR", pageID, "write failed: %v", err)
+			logPageWithLevel("ERR", crawledPage.Host, pageID, "write failed: %v", err)
 			return err
 		}
 	}
@@ -387,9 +388,9 @@ func processRerenderedPage(ctx context.Context, rc *runContext, metrics *runMetr
 	metrics.rerenderedCount++
 
 	if rc.dryRun {
-		logPageWithLevel("OK", pageID, "%s (dry-run)", crawledPage.Title)
+		logPageWithLevel("OK", crawledPage.Host, pageID, "%s (dry-run)", crawledPage.Title)
 	} else {
-		logPageWithLevel("OK", pageID, "%s", crawledPage.Title)
+		logPageWithLevel("OK", crawledPage.Host, pageID, "%s", crawledPage.Title)
 	}
 	metrics.successCount++
 	return nil
@@ -431,13 +432,20 @@ func previewPageAttachments(pageID string, attachments []confluenceclient.Attach
 	return results
 }
 
-func logPageWithLevel(level string, pageID int64, messageFormat string, args ...any) {
+func logPageWithLevel(level, host string, pageID int64, messageFormat string, args ...any) {
 	params := append([]any{level, pageID}, args...)
 	fmt.Printf("  [%s] Page %d: "+messageFormat+"\n", params...)
+
+	event := "page_processed"
+	if level == "WARN" {
+		event = "warning"
+	}
+	events.Emit(event, map[string]any{"level": level, "host": host, "page_id": pageID, "message": fmt.Sprintf(messageFormat, args...)})
 }
 
-func logPageAttachmentWarning(pageID int64, err error) {
+func logPageAttachmentWarning(host string, pageID int64, err error) {
 	fmt.Printf("  [WARN] Page %d attachment: %v\n", pageID, err)
+	events.Emit("warning", map[string]any{"host": host, "page_id": pageID, "message": fmt.Sprintf("attachment: %v", err)})
 }
 
 func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error) {
@@ -502,6 +510,20 @@ func finalizeRun(rc *runContext, metrics *runMetrics) (*runFinalizeResult, error
 
 func printRunSummary(rc *runContext, metrics *runMetrics, finalizeResult *runFinalizeResult, elapsed time.Duration) {
 	stats := rc.crawler.Stats()
+	events.Emit("run_finished", map[string]any{
+		"mode":                rc.mode,
+		"dry_run":             rc.dryRun,
+		"pages_crawled":       stats.TotalPages,
+		"pages_ok":            metrics.successCount,
+		"pages_failed":        metrics.errorCount,
+		"pages_deleted":       metrics.deletedCount,
+		"pages_reused":        metrics.reusedCount,
+		"pages_rerendered":    metrics.rerenderedCount,
+		"files_deleted":       finalizeResult.reconcileStats.Deleted,
+		"checkpoint_advanced": finalizeResult.checkpointAdvanced,
+		"output_dir":          rc.cfg.Output.Dir,
+		"elapsed_ms":          elapsed.Milliseconds(),
+	})
 	fmt.Printf("\n=== Crawl Complete ===\n")
 	if rc.dryRun {
 		fmt.Printf("Mode: %s (dry-run)\n", rc.mode)
