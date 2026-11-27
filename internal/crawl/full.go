@@ -411,7 +411,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID
 		if err != nil {
 			// Non-fatal: log but continue with whatever inline links we already have.
 			fmt.Printf("  [D%d] WARN  %d — children macro fetch failed: %v\n", depth, pageID, err)
-			events.Emit("warning", map[string]any{"page_id": pageID, "depth": depth, "message": fmt.Sprintf("children macro fetch failed: %v", err)})
+			events.Emit("warning", map[string]any{"host": host, "page_id": pageID, "depth": depth, "message": fmt.Sprintf("children macro fetch failed: %v", err)})
 		} else {
 			page.OutgoingLinks = links.DedupPageRefs(append(page.OutgoingLinks, refsForHost(host, childIDs)...))
 		}
@@ -428,7 +428,7 @@ func (cs *CrawlSession) processFullNode(ctx context.Context, host string, pageID
 		if err != nil {
 			// Non-fatal: log but continue.
 			fmt.Printf("  [D%d] WARN  %d — contentbylabel CQL search failed: %v\n", depth, pageID, err)
-			events.Emit("warning", map[string]any{"page_id": pageID, "depth": depth, "message": fmt.Sprintf("contentbylabel CQL search failed: %v", err)})
+			events.Emit("warning", map[string]any{"host": host, "page_id": pageID, "depth": depth, "message": fmt.Sprintf("contentbylabel CQL search failed: %v", err)})
 			continue
 		}
 		page.OutgoingLinks = links.DedupPageRefs(append(page.OutgoingLinks, refsForHost(host, cqlIDs)...))

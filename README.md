@@ -247,8 +247,8 @@ confluence2md --config /path/to/config.yaml validate
 |---|---|---|
 | `run_started` | Start of a crawl | `version`, `mode`, `dry_run` |
 | `crawl_page` | A page was visited | `status` (`fetched`, `error`, `deleted`), `host`, `page_id`, `depth`, `title`, `error` |
-| `page_processed` | A page was written or reused | `level`, `page_id`, `message` |
-| `warning` | A non-fatal problem | `page_id`, `message` |
+| `page_processed` | A page was written or reused | `level`, `host`, `page_id`, `message` |
+| `warning` | A non-fatal problem; also every `WARN` line printed while processing a page | `host`, `page_id`, `message` |
 | `run_finished` | End of a crawl that reached its summary | `pages_crawled`, `pages_ok`, `pages_failed`, `pages_deleted`, `checkpoint_advanced`, `elapsed_ms` |
 | `run_failed` | The run ended in an error | `message`, `exit_code` |
 

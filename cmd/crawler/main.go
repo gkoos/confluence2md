@@ -126,7 +126,16 @@ func validate(cmd *cobra.Command, args []string) error {
 func main() {
 	startTime = time.Now()
 	if err := rootCmd.Execute(); err != nil {
-		events.Emit("run_failed", map[string]any{"message": err.Error(), "exit_code": exitCodeFor(err)})
+		reportFailure(err)
 		os.Exit(exitCodeFor(err))
 	}
+}
+
+// reportFailure emits run_failed when JSON events were requested.
+func reportFailure(err error) {
+	// Flag parsing can fail before any command enabled the events the user asked for.
+	if logFormat == "json" && !events.Enabled() {
+		_ = configureLogFormat(logFormat)
+	}
+	events.Emit("run_failed", map[string]any{"message": err.Error(), "exit_code": exitCodeFor(err)})
 }

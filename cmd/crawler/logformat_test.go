@@ -2,11 +2,62 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/gkoos/confluence2md/internal/events"
 )
+
+func TestReportFailureHonoursJSONWhenFlagParsingFailedFirst(t *testing.T) {
+	original := os.Stdout
+	t.Cleanup(func() {
+		os.Stdout = original
+		events.Enable(nil)
+		logFormat = "text"
+	})
+
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	os.Stdout = writer
+
+	// --log-format json was parsed, then an unknown flag stopped the command before run().
+	logFormat = "json"
+	reportFailure(withExitCode(exitConfig, errors.New("unknown flag: --nope")))
+	_ = writer.Close()
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(reader); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `"event":"run_failed"`) || !strings.Contains(out, `"exit_code":2`) {
+		t.Fatalf("run_failed was not written to stdout: %q", out)
+	}
+}
+
+func TestWarnLevelIsAWarningEventAndEventsCarryTheHost(t *testing.T) {
+	var buf bytes.Buffer
+	events.Enable(&buf)
+	t.Cleanup(func() { events.Enable(nil) })
+
+	logPageWithLevel("WARN", "a.example.test", 7, "comments failed: %v", "boom")
+	logPageWithLevel("OK", "b.example.test", 7, "fine")
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("got %d events, want 2: %q", len(lines), buf.String())
+	}
+	if !strings.Contains(lines[0], `"event":"warning"`) || !strings.Contains(lines[0], `"host":"a.example.test"`) {
+		t.Fatalf("WARN must be a warning event with its host: %s", lines[0])
+	}
+	if !strings.Contains(lines[1], `"event":"page_processed"`) || !strings.Contains(lines[1], `"host":"b.example.test"`) {
+		t.Fatalf("OK must be a page_processed event with its host: %s", lines[1])
+	}
+}
 
 func TestConfigureLogFormatRejectsUnknownFormat(t *testing.T) {
 	err := configureLogFormat("yaml")
